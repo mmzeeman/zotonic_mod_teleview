@@ -4,6 +4,8 @@
     {registered, []},
     {applications, [kernel, stdlib, zotonic_core, diffy]},
     {env, []},
-    {modules, [mod_teleview]},
-    {maintainers, []}
+    {modules, []},
+    {maintainers, []},
+    {licenses, ["Apache 2.0"]},
+    {links, [{"GitHub", "https://github.com/mmzeeman/zotonic_mod_teleview"}]}
 ]}.
