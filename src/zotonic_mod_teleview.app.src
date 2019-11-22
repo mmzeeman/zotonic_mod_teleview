@@ -2,8 +2,8 @@
     {description, "TeleView provides server rendered views which are live updated on the client"},
     {vsn, "git"},
     {registered, []},
-    {applications, [kernel, stdlib, zotonic_core]},
+    {applications, [kernel, stdlib, zotonic_core, diffy]},
     {env, []},
-    {modules, []},
+    {modules, [mod_teleview]},
     {maintainers, []}
 ]}.
