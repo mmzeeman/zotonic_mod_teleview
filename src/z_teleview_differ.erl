@@ -41,9 +41,8 @@
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
 
 %
-handle_call({new_frame, _Doc}, _From, #state{processing=true}=State) ->
+handle_call({new_frame, _Frame}, _From, #state{processing=true}=State) ->
     % The update will be dropped.
-    ?DEBUG(busy),
     {reply, busy, State};
 handle_call({new_frame, Frame}}, _From, #state{processing=false}=State) ->
     self() ! next_patch,
@@ -68,10 +67,10 @@ handle_info(next_patch, #state{processing=true,
     Patch = next_patch(Frame, Current, Key, LastTime, ?MIN_TIME, ?MAX_TIME),
 
     case Patch of
-        #keydoc{} ->
-            {noreply, State#state{keydoc=Doc, current_doc=Doc, last_time=current_time(), processing=false}};
+        {keydoc, _, CurrentTime} ->
+            {noreply, State#state{keydoc=Frame, current_doc=Frame, last_time=CurrentTime, processing=false}};
         _ ->
-            {noreply, State#state{current_frame=Doc, processing=false}}
+            {noreply, State#state{current_frame=Frame, processing=false}}
     end;
 handle_info(_Info, State) ->
     {noreply, State}.
