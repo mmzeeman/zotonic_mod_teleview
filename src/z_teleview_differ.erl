@@ -23,9 +23,6 @@
 
 %% Generates diffs to update remote views with a minimum use of bandwith.
 
--define(MIN_TIME, 10000).
--define(MAX_TIME, 60000).
-
 -record(state, {
           id,
 
@@ -34,6 +31,9 @@
           last_time=0,
 
           new_frame,
+
+          min_time=10000, 
+          max_time=60000, 
 
           processing=false,
           context :: zotonic:context()
@@ -79,10 +79,14 @@ handle_info(next_patch, #state{processing=true,
                                key_frame=Key,
                                current_frame=Current,
                                last_time=LastTime}=State) ->
-    Patch = next_patch(Frame, Current, Key, LastTime, ?MIN_TIME, ?MAX_TIME),
+    Patch = next_patch(Frame, Current, Key, current_time(), LastTime, State#state.min_time, State#state.max_time),
+
+    %% 
+    %% TODO: broadcast the patch
+    %%
 
     case Patch of
-        {keydoc, _, CurrentTime} ->
+        {key_frame, _, CurrentTime} ->
             {noreply, State#state{
                         key_frame=Frame,
                         current_frame=Frame,
@@ -107,20 +111,19 @@ code_change(_OldVsn, State, _Extra) ->
 %%
 
 %% Calculate the next patch.
-next_patch(Frame, Current, Key, LastTime, MinTime, MaxTime) ->
-    CurrentTime = current_time(),
+next_patch(Frame, Current, Key, CurrentTime, LastTime, MinTime, MaxTime) ->
     DeltaTime = CurrentTime - LastTime,
 
     case DeltaTime > MaxTime of
         true ->
-            {keydoc, Frame, CurrentTime};
+            {key_frame, Frame, CurrentTime};
         false ->
             CumulativePatch = make_patch(Key, Frame),
             case complexity(CumulativePatch, Frame) of
                 too_high ->
                     case DeltaTime > MinTime of
                         true ->
-                            {keydoc, Frame, CurrentTime};
+                            {key_frame, Frame, CurrentTime};
                         false ->
                             IncrementalPatch = make_patch(Current, Frame),
                             {incremental, IncrementalPatch, CurrentTime}
@@ -138,23 +141,46 @@ make_patch(SourceText, DestinationText) ->
 complexity(Diffs, Doc) ->
     Size = size(Doc),
     EstimatedSize = estimated_size(Diffs),
-    case EstimatedSize * 10 > Size of
+    case EstimatedSize > Size of
         true -> too_high;
         false -> ok
     end.
-
 estimated_size(Diffs) ->
-    estimated_size(Diffs, length(Diffs) * 3).
+    estimated_size(Diffs, length(Diffs)).
 
-estimated_size([], Acc) ->
-    25 + Acc;
-estimated_size([{i, Data}|Rest], Acc) ->
-    estimated_size(Rest, Acc + 4 + size(Data));
-estimated_size([{c, _N}|Rest], Acc) ->
-    estimated_size(Rest, Acc + 6);
-estimated_size([{s, _N}|Rest], Acc) ->
-    estimated_size(Rest, Acc + 6).
+estimated_size([], Acc) -> Acc;
+estimated_size([{insert, Data}|Rest], Acc) -> estimated_size(Rest, Acc + 2 + size(Data));
+estimated_size([{copy, _N}|Rest], Acc) -> estimated_size(Rest, Acc + 2);
+estimated_size([{skip, _N}|Rest], Acc) -> estimated_size(Rest, Acc + 2).
 
 current_time() ->
     erlang:system_time(millisecond).
 
+
+%%
+%% Tests
+%%
+
+-ifdef(TEST).
+-include_lib("eunit/include/eunit.hrl").
+
+next_frame_test() ->
+    P1 = next_patch(<<"jungle">>, <<"jungle">>, <<"jungle">>, 100, 0, 10, 2000),
+    ?assertEqual({cumulative, [], 100}, P1),
+
+    P2 = next_patch(<<"jungle">>, <<"jungle">>, <<"jungle">>, 2001, 0, 10, 2000),
+    ?assertEqual({key_frame, <<"jungle">>, 2001}, P2),
+
+    ok.
+
+make_patch_test() ->
+    P1 = make_patch(<<"jungle">>, <<"jungle">>),
+    ?assertEqual([], P1),
+
+    P2 = make_patch(<<"aab">>, <<"aabb">>),
+    ?assertEqual([{copy,4},{skip,1}], P2),
+
+    ok.
+
+
+-endif.
