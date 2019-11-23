@@ -111,6 +111,9 @@ code_change(_OldVsn, State, _Extra) ->
 %%
 
 %% Calculate the next patch.
+next_patch(Frame, Current, Key, CurrentTime, LastTime, MinTime, infinite) ->
+    DeltaTime = CurrentTime - LastTime,
+    next_patch1(Frame, Current, Key, CurrentTime, DeltaTime, MinTime);
 next_patch(Frame, Current, Key, CurrentTime, LastTime, MinTime, MaxTime) ->
     DeltaTime = CurrentTime - LastTime,
 
@@ -118,20 +121,24 @@ next_patch(Frame, Current, Key, CurrentTime, LastTime, MinTime, MaxTime) ->
         true ->
             {key_frame, Frame, CurrentTime};
         false ->
-            CumulativePatch = make_patch(Key, Frame),
-            case complexity(CumulativePatch, Frame) of
-                too_high ->
-                    case DeltaTime > MinTime of
-                        true ->
-                            {key_frame, Frame, CurrentTime};
-                        false ->
-                            IncrementalPatch = make_patch(Current, Frame),
-                            {incremental, IncrementalPatch, CurrentTime}
-                    end;
-                _ ->
-                    {cumulative, CumulativePatch, CurrentTime}
-            end
+            next_patch1(Frame, Current, Key, CurrentTime, DeltaTime, MinTime)
     end.
+
+next_patch1(Frame, Current, Key, CurrentTime, DeltaTime, MinTime) ->
+    CumulativePatch = make_patch(Key, Frame),
+    case complexity(CumulativePatch, Frame) of
+        too_high ->
+            case DeltaTime > MinTime of
+                true ->
+                    {key_frame, Frame, CurrentTime};
+                false ->
+                    IncrementalPatch = make_patch(Current, Frame),
+                    {incremental, IncrementalPatch, CurrentTime}
+            end;
+        _ ->
+            {cumulative, CumulativePatch, CurrentTime}
+    end.
+
 
 make_patch(SourceText, DestinationText) ->
     Diffs = diffy:diff(SourceText, DestinationText),
@@ -170,6 +177,9 @@ next_frame_test() ->
 
     P2 = next_patch(<<"jungle">>, <<"jungle">>, <<"jungle">>, 2001, 0, 10, 2000),
     ?assertEqual({key_frame, <<"jungle">>, 2001}, P2),
+
+    P3 = next_patch(<<"jungle">>, <<"jungle">>, <<"jungle">>, 2001, 0, 10, infinite),
+    ?assertEqual({cumulative, [], 2001}, P3),
 
     ok.
 
