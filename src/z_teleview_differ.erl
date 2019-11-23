@@ -39,13 +39,16 @@
           context :: zotonic:context()
 }).
 
+%% api
+-export([
+    start_link/2
+]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
 
 start_link(Id, Context) ->
     gen_server:start_link({via, z_proc, {{?MODULE, Id}, Context}}, ?MODULE, [Id, Context], []).
-
 
 %% gen_server callbacks
 
