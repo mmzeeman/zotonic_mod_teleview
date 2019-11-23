@@ -20,3 +20,4 @@
 %% Responsible for rendering updated views... Sends the result to the differ
 %%
 
+-module(z_teleview_render).

@@ -17,14 +17,17 @@
 %% limitations under the License.
 
 -module(mod_teleview).
+
 -author("Maas-Maarten Zeeman <mmzeeman@xs4all.nl>").
+-mod_title("TeleView").
+-mod_description("Provides server rendered live updating views").
+-mod_provides([teleview]).
+-mod_depends([base, mqtt]).
+-mod_prio(1000).
 
 -behaviour(supervisor).
 
--mod_title("TeleView").
--mod_description("Provides server rendered live updating views").
--mod_depends([base, mqtt]).
--mod_prio(1000).
+-include_lib("zotonic_core/include/zotonic.hrl").
 
 -export([start_link/1]).
 -export([init/1]).
@@ -33,7 +36,6 @@
 
 -define(SERVER, ?MODULE).
 
--include_lib("zotonic_core/include/zotonic.hrl").
 
 start_link(Args) ->
     {context, Context} = proplists:lookup(context, Args),

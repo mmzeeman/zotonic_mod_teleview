@@ -23,6 +23,9 @@
 
 %% Generates diffs to update remote views with a minimum use of bandwith.
 
+-define(MIN_TIME, 10000).
+-define(MAX_TIME, 60000).
+
 -record(state, {
           id,
 
@@ -40,11 +43,20 @@
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
 
+start_link(Id, Context) ->
+    gen_server:start_link({via, z_proc, {{?MODULE, Id}, Context}}, ?MODULE, [Id, Context], []).
+
+
+%% gen_server callbacks
+
+init([Id, Context]) ->
+    {ok, #state{id=Id, context=Context}}.
+
 %
 handle_call({new_frame, _Frame}, _From, #state{processing=true}=State) ->
     % The update will be dropped.
     {reply, busy, State};
-handle_call({new_frame, Frame}}, _From, #state{processing=false}=State) ->
+handle_call({new_frame, Frame}, _From, #state{processing=false}=State) ->
     self() ! next_patch,
     {reply, ok, State#state{new_frame=Frame, processing=true}};
 
@@ -68,9 +80,15 @@ handle_info(next_patch, #state{processing=true,
 
     case Patch of
         {keydoc, _, CurrentTime} ->
-            {noreply, State#state{keydoc=Frame, current_doc=Frame, last_time=CurrentTime, processing=false}};
+            {noreply, State#state{
+                        key_frame=Frame,
+                        current_frame=Frame,
+                        last_time=CurrentTime,
+                        processing=false}};
         _ ->
-            {noreply, State#state{current_frame=Frame, processing=false}}
+            {noreply, State#state{
+                        current_frame=Frame,
+                        processing=false}}
     end;
 handle_info(_Info, State) ->
     {noreply, State}.
@@ -99,7 +117,7 @@ next_patch(Frame, Current, Key, LastTime, MinTime, MaxTime) ->
                 too_high ->
                     case DeltaTime > MinTime of
                         true ->
-                            {keydoc, Frame, CurrentTime}};
+                            {keydoc, Frame, CurrentTime};
                         false ->
                             IncrementalPatch = make_patch(Current, Frame),
                             {incremental, IncrementalPatch, CurrentTime}
@@ -110,7 +128,7 @@ next_patch(Frame, Current, Key, LastTime, MinTime, MaxTime) ->
     end.
 
 make_patch(SourceText, DestinationText) ->
-    Diffs = diffy:diff(SourceText, DestinationText)
+    Diffs = diffy:diff(SourceText, DestinationText),
     CleanedDiffs = diffy:cleanup_efficiency(Diffs),
     diffy_simple_patch:make_patch(CleanedDiffs).
 

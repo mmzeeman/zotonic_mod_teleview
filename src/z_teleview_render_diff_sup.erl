@@ -16,12 +16,12 @@
 %% See the License for the specific language governing permissions and
 %% limitations under the License.
 
--module(z_render_diff_supervisor).
+-module(z_teleview_render_diff_sup).
 -author("Maas-Maarten Zeeman <mmzeeman@xs4all.nl>").
 
--behaviour(supervisor).
+%%-behaviour(supervisor).
 
--export([start_link/1]).
--export([init/1]).
+%%-export([start_link/1]).
+%%-export([init/1]).
 
-...
+%%...
