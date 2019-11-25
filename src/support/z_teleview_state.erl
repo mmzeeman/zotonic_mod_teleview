@@ -19,4 +19,15 @@
 -module(z_teleview_state).
 -author("Maas-Maarten Zeeman <mmzeeman@xs4all.nl>").
 
-%% Manages 
+%-behaviour(gen_server).
+
+%-include([start_link/3]).
+
+
+%start_link(Id, Args, Context) ->
+%    ok.
+
+
+
+
+

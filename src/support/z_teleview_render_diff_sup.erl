@@ -19,9 +19,25 @@
 -module(z_teleview_render_diff_sup).
 -author("Maas-Maarten Zeeman <mmzeeman@xs4all.nl>").
 
-%%-behaviour(supervisor).
+-behaviour(supervisor).
 
-%%-export([start_link/1]).
-%%-export([init/1]).
+-export([start_link/3]).
+-export([init/1]).
 
-%%...
+start_link(Id, Args, Context) ->
+    supervisor:start_link(
+      {via, z_proc, {{?MODULE, Id}, Context}}, ?MODULE,
+      [Id, Args, Context]).
+
+
+init([Id, Args, Context]) ->
+    {ok, {{one_for_all, 20, 10},
+          [
+           {z_teleview_render,
+            {z_teleview_render, start_link, [Id, Args, Context]},
+            permanent, 5000, worker, dynamic},
+           {z_teleview_differ,
+            {z_teleview_differ, start_link, [Id, Args, Context]},
+            permanent, 5000, worker, dynamic}
+          ]}}.
+

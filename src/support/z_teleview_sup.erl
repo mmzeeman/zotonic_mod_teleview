@@ -28,9 +28,9 @@
 
 
 start_link(Id, Args, Context) ->
-    gen_server:start_link(
+    supervisor:start_link(
       {via, z_proc, {{?MODULE, Id}, Context}}, ?MODULE,
-      [Args, Context], []).
+      [Args, Context]).
 
 init([Id, Args, Context]) ->
     {ok, {{one_for_all, 20, 10},
