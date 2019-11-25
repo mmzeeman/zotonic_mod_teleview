@@ -33,7 +33,9 @@
           new_frame,
 
           min_time=10000, 
-          max_time=60000, 
+          max_time=60000,  % integer in ms | infinite
+
+          mfa=undefined,
 
           processing=false,
           context :: zotonic:context()
@@ -41,19 +43,23 @@
 
 %% api
 -export([
-    start_link/2
+    start_link/5
 ]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
 
-start_link(Id, Context) ->
-    gen_server:start_link({via, z_proc, {{?MODULE, Id}, Context}}, ?MODULE, [Id, Context], []).
+%%
+%% Need to pass, broadcast function, min and maxtime, 
+%% 
+
+start_link(Id, MinTime, MaxTime, {_M, _F, _A}=MFA, Context) ->
+    gen_server:start_link({via, z_proc, {{?MODULE, Id}, Context}}, ?MODULE, [Id, MinTime, MaxTime, MFA, Context], []).
 
 %% gen_server callbacks
 
-init([Id, Context]) ->
-    {ok, #state{id=Id, context=Context}}.
+init([Id, MinTime, MaxTime, MFA, Context]) ->
+    {ok, #state{id=Id, min_time=MinTime, max_time=MaxTime, mfa=MFA, context=Context}}.
 
 %
 handle_call({new_frame, _Frame}, _From, #state{processing=true}=State) ->
@@ -80,11 +86,7 @@ handle_info(next_patch, #state{processing=true,
                                current_frame=Current,
                                last_time=LastTime}=State) ->
     Patch = next_patch(Frame, Current, Key, current_time(), LastTime, State#state.min_time, State#state.max_time),
-
-    %% 
-    %% TODO: broadcast the patch
-    %%
-
+    broadcast_patch(Patch, State),
     case Patch of
         {key_frame, _, CurrentTime} ->
             {noreply, State#state{
@@ -109,6 +111,9 @@ code_change(_OldVsn, State, _Extra) ->
 %%
 %% helpers
 %%
+
+broadcast_patch(Patch, #state{mfa={Module, Function, Args}}) ->
+    Module:Function(Patch, Args).
 
 %% Calculate the next patch.
 next_patch(Frame, Current, Key, CurrentTime, LastTime, MinTime, infinite) ->
@@ -147,18 +152,30 @@ make_patch(SourceText, DestinationText) ->
 
 complexity(Diffs, Doc) ->
     Size = size(Doc),
-    EstimatedSize = estimated_size(Diffs),
+    EstimatedSize = estimate_size(Diffs),
     case EstimatedSize > Size of
         true -> too_high;
         false -> ok
     end.
-estimated_size(Diffs) ->
-    estimated_size(Diffs, length(Diffs)).
 
-estimated_size([], Acc) -> Acc;
-estimated_size([{insert, Data}|Rest], Acc) -> estimated_size(Rest, Acc + 2 + size(Data));
-estimated_size([{copy, _N}|Rest], Acc) -> estimated_size(Rest, Acc + 2);
-estimated_size([{skip, _N}|Rest], Acc) -> estimated_size(Rest, Acc + 2).
+estimate_size(Diffs) ->
+    estimate_size(Diffs, 0).
+
+estimate_size([], Acc) -> Acc;
+estimate_size([{insert, Data}|Rest], Acc) ->
+    estimate_size(Rest, Acc + 4 + estimate_size_element(Data));
+estimate_size([{copy, N}|Rest], Acc) ->
+    estimate_size(Rest, Acc + 4 + estimate_size_element(N));
+estimate_size([{skip, N}|Rest], Acc) ->
+    estimate_size(Rest, Acc + 4 + estimate_size_element(N)).
+
+estimate_size_element(I) when is_integer(I) andalso I < 10 -> 1;
+estimate_size_element(I) when is_integer(I) andalso I < 100 -> 2;
+estimate_size_element(I) when is_integer(I) andalso I < 1000 -> 3;
+estimate_size_element(I) when is_integer(I) andalso I < 10000 -> 4;
+estimate_size_element(I) when is_integer(I) andalso I < 100000 -> 5;
+estimate_size_element(I) when is_integer(I) -> z_convert:to_integer(math:log10(I));
+estimate_size_element(B) when is_binary(B) -> size(B).
 
 current_time() ->
     erlang:system_time(millisecond).
@@ -171,6 +188,15 @@ current_time() ->
 -ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
 
+estimate_size_test() ->
+    ?assertEqual(estimate_size([]), 0),
+    ?assertEqual(8, estimate_size([{skip, 1000}])),
+    ?assertEqual(5, estimate_size([{skip, 1}])),
+    ?assertEqual(8, estimate_size([{insert, <<"toot">>}])),
+
+    ok.
+
+
 next_frame_test() ->
     P1 = next_patch(<<"jungle">>, <<"jungle">>, <<"jungle">>, 100, 0, 10, 2000),
     ?assertEqual({cumulative, [], 100}, P1),
@@ -178,6 +204,7 @@ next_frame_test() ->
     P2 = next_patch(<<"jungle">>, <<"jungle">>, <<"jungle">>, 2001, 0, 10, 2000),
     ?assertEqual({key_frame, <<"jungle">>, 2001}, P2),
 
+    %% Infinite maxtime
     P3 = next_patch(<<"jungle">>, <<"jungle">>, <<"jungle">>, 2001, 0, 10, infinite),
     ?assertEqual({cumulative, [], 2001}, P3),
 

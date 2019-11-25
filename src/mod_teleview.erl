@@ -22,7 +22,7 @@
 -mod_title("TeleView").
 -mod_description("Provides server rendered live updating views").
 -mod_provides([teleview]).
--mod_depends([base, mqtt]).
+-mod_depends([base, mod_mqtt]).
 -mod_prio(1000).
 
 -behaviour(supervisor).
@@ -39,13 +39,14 @@
 
 start_link(Args) ->
     {context, Context} = proplists:lookup(context, Args),
-    supervisor:start_link({local, z_utils:name_for_site(?SERVER, Context)}, ?MODULE, []).
+    supervisor:start_link(
+      {local, z_utils:name_for_site(?SERVER, Context)}, ?MODULE, []).
 
 start_teleview(_Id, _Context) ->
     ok.
 
-
 init([]) ->
+    ?DEBUG("TELEVIEW STARTED"),
     {ok, {{simple_one_for_one, 20, 10},
           [
            {undefined, 
