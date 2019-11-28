@@ -32,7 +32,7 @@
 -export([start_link/1]).
 -export([init/1]).
 
--export([start_teleview/2]).
+-export([start_teleview/3]).
 
 -define(SERVER, ?MODULE).
 
@@ -40,16 +40,27 @@
 start_link(Args) ->
     {context, Context} = proplists:lookup(context, Args),
     supervisor:start_link(
-      {local, z_utils:name_for_site(?SERVER, Context)}, ?MODULE, []).
+      {local, z_utils:name_for_site(?SERVER, Context)}, ?MODULE, Args).
 
-start_teleview(_Id, _Context) ->
-    ok.
+start_teleview(Id, Args, Context) ->
+    AsyncContext = z_context:prune_for_async(Context),
 
-init([]) ->
-    ?DEBUG("TELEVIEW STARTED"),
-    {ok, {{simple_one_for_one, 20, 10},
-          [
-           {undefined, 
-            {z_teleview_sup, start_link, []},
-            transient, brutal_kill, supervisor, []}
-          ]}}.
+    TeleViewSpec = #{id => Id,
+                     start => {z_teleview_sup, start_link, [Id, Args, AsyncContext]},
+                     restart => transient,
+                     type => supervisor,
+                     intensity => 5000,
+                     modules => dynamic},
+
+    case supervisor:start_child(z_utils:name_for_site(?SERVER, Context), TeleViewSpec) of
+        {ok, Pid} -> {ok, Pid};
+        {error, {already_started, Pid}} -> {ok, Pid}
+    end.
+
+init(Args) ->
+    {context, Context} = proplists:lookup(context, Args),
+    lager:md([
+              {site, z_context:site(Context)},
+              {module, ?MODULE}
+             ]),
+    {ok, {{one_for_one, 20, 10}, []}}.

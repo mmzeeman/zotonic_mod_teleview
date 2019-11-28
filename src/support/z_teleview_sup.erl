@@ -30,7 +30,7 @@
 start_link(Id, Args, Context) ->
     supervisor:start_link(
       {via, z_proc, {{?MODULE, Id}, Context}}, ?MODULE,
-      [Args, Context]).
+      [Id, Args, Context]).
 
 init([Id, Args, Context]) ->
     {ok, {{one_for_all, 20, 10},
