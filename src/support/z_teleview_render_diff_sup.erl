@@ -24,6 +24,10 @@
 -export([start_link/3]).
 -export([init/1]).
 
+-export([patch/2]).
+
+-include_lib("zotonic_core/include/zotonic.hrl").
+
 start_link(Id, Args, Context) ->
     supervisor:start_link(
       {via, z_proc, {{?MODULE, Id}, Context}}, ?MODULE,
@@ -31,13 +35,19 @@ start_link(Id, Args, Context) ->
 
 
 init([Id, Args, Context]) ->
+    MinTime = 10000,
+    MaxTime = 60000,
+
     {ok, {{one_for_all, 20, 10},
           [
            {z_teleview_render,
             {z_teleview_render, start_link, [Id, Args, Context]},
             permanent, 5000, worker, dynamic},
+
            {z_teleview_differ,
-            {z_teleview_differ, start_link, [Id, Args, Context]},
+            {z_teleview_differ, start_link, [Id, MinTime, MaxTime, {?MODULE, patch, undefined}, Context]},
             permanent, 5000, worker, dynamic}
           ]}}.
 
+patch(Patch, _) ->
+    ?DEBUG(Patch).
