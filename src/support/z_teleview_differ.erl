@@ -43,27 +43,33 @@
 
 %% api
 -export([
-    start_link/5
+    start_link/5,
+    new_frame/3
 ]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
 
 %%
-%% Need to pass, broadcast function, min and maxtime, 
+%% Api
 %% 
 
 start_link(Id, MinTime, MaxTime, {_M, _F, _A}=MFA, Context) ->
     gen_server:start_link({via, z_proc, {{?MODULE, Id}, Context}}, ?MODULE, [Id, MinTime, MaxTime, MFA, Context], []).
 
+new_frame(Id, NewFrame, Context) ->
+    gen_server:call({via, z_proc, {{?MODULE, Id}, Context}}, {new_frame, NewFrame}).
+
+%%
 %% gen_server callbacks
+%%
 
 init([Id, MinTime, MaxTime, MFA, Context]) ->
     {ok, #state{id=Id, min_time=MinTime, max_time=MaxTime, mfa=MFA, context=Context}}.
 
 %
 handle_call({new_frame, _Frame}, _From, #state{processing=true}=State) ->
-    % The update will be dropped.
+    % Notify the caller that the differ is processing.
     {reply, busy, State};
 handle_call({new_frame, Frame}, _From, #state{processing=false}=State) ->
     self() ! next_patch,
@@ -218,6 +224,5 @@ make_patch_test() ->
     ?assertEqual([{copy,4},{skip,1}], P2),
 
     ok.
-
 
 -endif.

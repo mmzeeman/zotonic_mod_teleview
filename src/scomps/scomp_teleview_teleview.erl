@@ -26,7 +26,6 @@
 
 vary(_Params, _Context) -> nocache.
 
-
 %% Make a place for the view to land and setup the worker which
 %% is going to manage the view.
 

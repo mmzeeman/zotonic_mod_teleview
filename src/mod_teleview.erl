@@ -32,16 +32,25 @@
 -export([start_link/1]).
 -export([init/1]).
 
--export([start_teleview/3]).
+-export([
+    start_teleview/2,
+    start_teleview/3
+]).
 
 -define(SERVER, ?MODULE).
-
 
 start_link(Args) ->
     {context, Context} = proplists:lookup(context, Args),
     supervisor:start_link(
       {local, z_utils:name_for_site(?SERVER, Context)}, ?MODULE, Args).
 
+% @doc start_teleview without giving an explicit Id. The Id will be generated.
+start_teleview(Args, Context) ->
+    Id = z_ids:id(),
+    {ok, Pid} = start_teleview(Id, Args, Context),
+    {ok, Id, Pid}.
+
+% @doc start_teleview starts a new teleview with the given Id.
 start_teleview(Id, Args, Context) ->
     AsyncContext = z_context:prune_for_async(Context),
 
@@ -56,6 +65,10 @@ start_teleview(Id, Args, Context) ->
         {ok, Pid} -> {ok, Pid};
         {error, {already_started, Pid}} -> {ok, Pid}
     end.
+
+%%
+%% Supervisor callback
+%%
 
 init(Args) ->
     {context, Context} = proplists:lookup(context, Args),

@@ -24,19 +24,21 @@
 -export([start_link/3]).
 -export([init/1]).
 
--export([patch/2]).
+-export([publish_patch/2]).
 
 -include_lib("zotonic_core/include/zotonic.hrl").
+
+-define(MIN_TIME, 10000).
+-define(MAX_TIME, 60000).
 
 start_link(Id, Args, Context) ->
     supervisor:start_link(
       {via, z_proc, {{?MODULE, Id}, Context}}, ?MODULE,
       [Id, Args, Context]).
 
-
 init([Id, Args, Context]) ->
-    MinTime = 10000,
-    MaxTime = 60000,
+    MinTime = find_config(differ_min_time, Args, ?MIN_TIME),
+    MaxTime = find_config(differ_max_time, Args, ?MAX_TIME),
 
     {ok, {{one_for_all, 20, 10},
           [
@@ -45,9 +47,20 @@ init([Id, Args, Context]) ->
             permanent, 5000, worker, dynamic},
 
            {z_teleview_differ,
-            {z_teleview_differ, start_link, [Id, MinTime, MaxTime, {?MODULE, patch, undefined}, Context]},
+            {z_teleview_differ, start_link, [Id, MinTime, MaxTime, {?MODULE, publish_patch, Context}, Context]},
             permanent, 5000, worker, dynamic}
           ]}}.
 
-patch(Patch, _) ->
+publish_patch(Patch, _Context) ->
     ?DEBUG(Patch).
+
+%% 
+%% Helpers
+%%
+
+find_config(Key, Map, Default) ->
+    case maps:find(Key, Map) of
+        error -> Default;
+        Value -> Value
+    end.
+
