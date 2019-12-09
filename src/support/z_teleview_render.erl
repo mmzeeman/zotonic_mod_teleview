@@ -67,11 +67,11 @@ init([Id, #{template := Template}, Context]) ->
     {ok, #state{id=Id, template=Template, context=Context}}.
 
 handle_call(render, _From, State) ->
-    {ok, State1} = render_and_diff([], State),
-    {reply, ok, State1};
+    {Reply, State1} = render_and_diff([], State),
+    {reply, Reply, State1};
 handle_call({render, Vars}, _From, State) ->
-    {ok, State1} = render_and_diff(Vars, State),
-    {reply, ok, State1};
+    {Reply, State1} = render_and_diff(Vars, State),
+    {reply, Reply, State1};
 handle_call(Msg, _From, State) ->
     {stop, {unknown_call, Msg}, State}.
 
@@ -93,18 +93,24 @@ code_change(_OldVsn, State, _Extra) ->
 %%
 
 % Render the template with the supplied vars and send the result to the differ.
-render_and_diff(Vars, #state{template=Template, context=Context}=State) ->
-    {IOList, Context1} = z_template:render_to_iolist(Template, Vars, Context),
-    NewFrame = z_convert:to_binary(IOList),
+render_and_diff(Vars, #state{template=Template, context=Context, id=Id}=State) ->
+    case z_template:render_to_iolist(Template, Vars, Context) of
+        {error, Reason} ->
+            {{error, Reason}, State};
+        {IOList, Context1} ->
+            NewFrame = z_convert:to_binary(IOList),
 
-    State1 = State#state{context=Context1},
+            ?DEBUG(NewFrame),
 
-    case z_teleview_differ:new_frame(NewFrame, Context) of
-        busy ->
-            %% The differ could not handle the new frame. It will be dropped.
-            lager:warning("Differ ~p is busy. Could not update view", [State#state.id]),
-            {ok, State1};
-        ok ->
-            {ok, State1}
+            State1 = State#state{context=Context1},
+
+            case z_teleview_differ:new_frame(Id, NewFrame, Context) of
+                busy ->
+                    %% The differ could not handle the new frame. It will be dropped.
+                    lager:warning("Differ ~p is busy. Could not update view", [State#state.id]),
+                    {ok, State1};
+                ok ->
+                    {ok, State1}
+            end
     end.
  

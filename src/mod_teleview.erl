@@ -62,8 +62,10 @@ start_teleview(Id, Args, Context) ->
                      modules => dynamic},
 
     case supervisor:start_child(z_utils:name_for_site(?SERVER, Context), TeleViewSpec) of
-        {ok, Pid} -> {ok, Pid};
-        {error, {already_started, Pid}} -> {ok, Pid}
+        {ok, Pid} ->
+            {ok, Pid};
+        {error, {already_started, Pid}} ->
+            {ok, Pid}
     end.
 
 %%
