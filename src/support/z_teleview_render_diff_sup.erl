@@ -51,8 +51,31 @@ init([Id, Args, Context]) ->
             permanent, 5000, worker, dynamic}
           ]}}.
 
+%% Publish the patch on a topic.
 publish_patch(Patch, _Context) ->
-    ?DEBUG(Patch).
+    %% Convert the patch to JSON
+    io:fwrite(standard_error, <<"~s~n">>, [patch_to_json(Patch)]).
+
+patch_to_json({key_frame, Data, Timestamp}) ->
+    z_json:encode([{html, Data}, {ts, Timestamp}]);
+
+patch_to_json({cumulative, Patch, Timestamp}) ->
+    z_json:encode([{cdiff, transform_patch(Patch, [])}, {ts, Timestamp}]);
+patch_to_json({incremental, Patch, Timestamp}) ->
+    z_json:encode([{idiff, transform_patch(Patch, [])}, {ts, Timestamp}]).
+
+
+transform_patch([], Acc) ->
+    lists:reverse(Acc);
+transform_patch([{skip, I}|Rest], Acc) ->
+    transform_patch(Rest, [I, <<$s>> | Acc]);
+transform_patch([{copy, I}|Rest], Acc) ->
+    transform_patch(Rest, [I, <<$c>> | Acc]);
+transform_patch([{insert, Data}|Rest], Acc) ->
+    transform_patch(Rest, [Data, <<$i>> | Acc]).
+
+
+
 
 %% 
 %% Helpers
