@@ -9,10 +9,14 @@
 ]).
 
 %% @doc ...
-m_get([get, topics, Label | _Rest], _Context) ->
-    ok.
 
+m_get([get, topics, Label | Rest], Context) ->
+    {ok, {get_topics(Label, Context), Rest}}.
 
 %%
 %% Helpers
 %%
+
+get_topics(Label, Context) ->
+    z_teleview_state:get_topics(Label, Context).
+

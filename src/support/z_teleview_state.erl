@@ -20,18 +20,35 @@
 -author("Maas-Maarten Zeeman <mmzeeman@xs4all.nl>").
 -behaviour(gen_server).
 
--export([start_link/3]).
+% api
+-export([
+    start_link/3,
+    get_topics/2
+]).
+
+% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
+
+-include_lib("zotonic_core/include/zotonic.hrl").
 
 -record(state, {
           id,
+
           context
          }).
+
 
 start_link(Id, Args, Context) ->
     gen_server:start_link({via, z_proc, {{?MODULE, Id}, Context}}, ?MODULE, [Id, Args, Context], []).
 
--include_lib("zotonic_core/include/zotonic.hrl").
+
+% @doc Return the render topic which can be used for this context.
+get_topics(Id, Context) ->
+    case z_proc:whereis({?MODULE, Id}, Context) of
+        Pid when is_pid(Pid) -> gen_server:call(get_topics, Pid);
+        undefined -> undefined
+    end.
+
 
 %%
 %% gen_server callbacks.

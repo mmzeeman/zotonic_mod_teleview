@@ -31,14 +31,22 @@
 -define(MIN_TIME, 10000).
 -define(MAX_TIME, 60000).
 
+%%
+%% Api
+%%
+
 start_link(Id, Args, Context) ->
     supervisor:start_link(
       {via, z_proc, {{?MODULE, Id}, Context}}, ?MODULE,
       [Id, Args, Context]).
 
-init([Id, Args, Context]) ->
-    MinTime = find_config(differ_min_time, Args, ?MIN_TIME),
-    MaxTime = find_config(differ_max_time, Args, ?MAX_TIME),
+%%
+%% supervisor callback
+%%
+
+init([Id, #{ publish_topic := Topic} = Args, Context]) ->
+    MinTime = maps:get(differ_min_time, Args, ?MIN_TIME),
+    MaxTime = maps:get(differ_max_time, Args, ?MAX_TIME),
 
     {ok, {{one_for_all, 20, 10},
           [
@@ -47,23 +55,31 @@ init([Id, Args, Context]) ->
             permanent, 5000, worker, dynamic},
 
            {z_teleview_differ,
-            {z_teleview_differ, start_link, [Id, MinTime, MaxTime, {?MODULE, publish_patch, Context}, Context]},
+            {z_teleview_differ, start_link, [Id, MinTime, MaxTime,
+                                             {?MODULE, publish_patch, [Topic, Context]},
+                                             Context]},
             permanent, 5000, worker, dynamic}
           ]}}.
 
+%%
+%% Helpers
+%%
+
 %% Publish the patch on a topic.
-publish_patch(Patch, _Context) ->
-    %% Convert the patch to JSON
-    io:fwrite(standard_error, <<"~s~n">>, [patch_to_json(Patch)]).
+publish_patch(Patch, [Topic, Context]) ->
+    z_mqtt:publish(Topic, ?DEBUG(patch_to_map(Patch)), Context).
 
-patch_to_json({key_frame, Data, Timestamp}) ->
-    z_json:encode([{html, Data}, {ts, Timestamp}]);
+% Convert the patch to a map which can be transported efficiently.
+patch_to_map({key_frame, Data, Timestamp}) ->
+    #{html => Data, ts => Timestamp};
+patch_to_map({cumulative, Patch, Timestamp}) ->
+    #{cdiff => transform_patch(Patch), ts => Timestamp};
+patch_to_map({incremental, Patch, Timestamp}) ->
+    #{idiff => transform_patch(Patch), ts => Timestamp}.
 
-patch_to_json({cumulative, Patch, Timestamp}) ->
-    z_json:encode([{cdiff, transform_patch(Patch, [])}, {ts, Timestamp}]);
-patch_to_json({incremental, Patch, Timestamp}) ->
-    z_json:encode([{idiff, transform_patch(Patch, [])}, {ts, Timestamp}]).
 
+transform_patch(L) when is_list(L) ->
+    transform_patch(L, []).
 
 transform_patch([], Acc) ->
     lists:reverse(Acc);
@@ -75,15 +91,4 @@ transform_patch([{insert, Data}|Rest], Acc) ->
     transform_patch(Rest, [Data, <<$i>> | Acc]).
 
 
-
-
-%% 
-%% Helpers
-%%
-
-find_config(Key, Map, Default) ->
-    case maps:find(Key, Map) of
-        error -> Default;
-        Value -> Value
-    end.
 
