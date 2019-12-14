@@ -70,7 +70,9 @@ representation will be the new current frame.
 
 *Note* cdiff's have to be applied, when a cdiff patch is skipped, it will not be possible to
 construct a new current frame by applying patches. The teleview viewport will have to wait for 
-a new keyframe.
+a new keyframe. Because of this drawback, teleview renderer will try to send idiffs as often as
+possible. Only when the patch against the keyframe becomes too complex, and the minimum time
+between keyframes is passed, a cdiff will be sent.
 
 ```javascript
 {
