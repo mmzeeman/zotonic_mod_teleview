@@ -28,9 +28,7 @@ When placing a request on the request topic, the following response will be retu
 ```javascript
 {
     "status": "ok",
-    "topics": {
-        "event": "model/liveview/event/<id>/<renderer-ref>/+"
-    }
+    "event_topic": "model/liveview/event/<id>/<renderer-ref>/+"
 }
 ```
 
