@@ -13,7 +13,50 @@ update its part of the dom-tree.
 
 # Design
 
-[TODO]
+## MQTT Topics
+
+#### `model/teleview/get/topics/<id>`
+
+Topic used to retrieve the render topics from the teleview with the given `<id>`. The selection is handled by a
+`z_teleview_state` process. This process selects the right renderer based on the language and/or acl settings of
+the user.
+
+#### `model/liveview/event/<id>/<renderer-ref>/+(patch_type)`
+
+The topic on which a renderer broadcasts its update.
+
+| patch_type | description                       |
+| -----------| --------------------------------- |
+| keyframe   | A complete rendered scene.         |
+| idiff      | A diff against the last keyframe. |
+| cdiff      | A diff against the last frame.     |
+
+##### `keyframe`
+
+```javascript
+{
+    ts: <timestamp>,
+    keyframe: <text>
+}
+```
+
+##### `idiff`
+
+```javascript
+{
+    ts: <timestamp>,
+    idiff: <patch>
+}
+```
+
+##### `cdiff`
+
+```javascript
+{
+    ts: <timestamp>,
+    cdiff: <patch>
+}
+```
 
 ## Supervision Tree
 
