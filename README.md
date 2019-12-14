@@ -23,6 +23,17 @@ Topic used to retrieve the render topics from the teleview with the given `<id>`
 `z_teleview_state` process. This process selects the right renderer based on the language and/or acl settings of
 the user.
 
+When placing a request on the request topic, the following response will be returned
+
+```javascript
+{
+    "status": "ok",
+    "topics": {
+        "event": "model/liveview/event/<id>/<renderer-ref>/+"
+    }
+}
+```
+
 #### `model/liveview/event/<id>/<renderer-ref>/+(patch_type)`
 
 The topic on which a renderer broadcasts its update.
@@ -40,8 +51,8 @@ by a teleview viewport on the client side by placing it in the DOM-tree.
 
 ```javascript
 {
-    ts: <timestamp>,
-    keyframe: <text>
+    "ts": <timestamp>,
+    "keyframe": <text>
 }
 ```
 
@@ -58,8 +69,8 @@ update the view.
 
 ```javascript
 {
-    ts: <timestamp>,
-    idiff: <patch>
+    "ts": <timestamp>,
+    "idiff": <patch>
 }
 ```
 
@@ -78,8 +89,8 @@ between keyframes is passed, a cdiff will be sent.
 
 ```javascript
 {
-    ts: <timestamp>,
-    cdiff: <patch>
+    "ts": <timestamp>,
+    "cdiff": <patch>
 }
 ```
 
