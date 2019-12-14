@@ -92,6 +92,22 @@ between keyframes is passed, a cdiff will be sent.
 }
 ```
 
+##### Diff
+
+The diff is a list of instructions.
+
+   - "c" for copy
+   - "s" for skip
+   - "i" for insert
+
+Example:
+
+```json
+["c", 100, "s", 51, "i", "<b>Hello World</b>", "c", 57]
+```
+
+Which means, copy 100 characters from the current document to the new, skip 51 characters from the current document, insert "<b>Hello World</b>", and copy 57 characters from the current document to the new one.
+
 ## Supervision Tree
 
 The teleview zotonic module is a supervisor. It can start televiews. Televiews are a process which manages
