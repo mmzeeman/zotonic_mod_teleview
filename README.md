@@ -25,13 +25,16 @@ the user.
 
 The topic on which a renderer broadcasts its update.
 
-| patch_type | description                       |
-| -----------| --------------------------------- |
+| patch_type | description                        |
+| -----------| ---------------------------------- |
 | keyframe   | A complete rendered scene.         |
-| idiff      | A diff against the last keyframe. |
+| idiff      | A diff against the last keyframe.  |
 | cdiff      | A diff against the last frame.     |
 
 ##### `keyframe`
+
+A **keyframe** is the complete, text representation of a teleview. The view can be made visible
+by a teleview viewport on the client side by placing it in the DOM-tree.
 
 ```javascript
 {
@@ -42,6 +45,15 @@ The topic on which a renderer broadcasts its update.
 
 ##### `idiff`
 
+An **idiff** is patch against the last keyframe of a teleview. It is short for *incremental patch*.
+The view of this frame can be made visible by applying the patch against the text representation 
+of the keyframe. It will result in a new text representation which can be placed in the DOM-tree.
+The patched keyframe document is the **current frame**.
+
+*Note* Because the patch is made against the keyframe it is possible to skip idiff patches when
+the client is too busy. The view will then not be updated. The next idiff patch can be used to
+update the view.
+
 ```javascript
 {
     ts: <timestamp>,
@@ -50,6 +62,15 @@ The topic on which a renderer broadcasts its update.
 ```
 
 ##### `cdiff`
+
+A **cdiff** is a patch against the *current frame*. It is short for *cumulative patch*. The view
+of this frame can be made visible by applying the patch against the text representation of the 
+current frame, and placing it in the DOM-tree. After applying the patch, the resulting text 
+representation will be the new current frame.
+
+*Note* cdiff's have to be applied, when a cdiff patch is skipped, it will not be possible to
+construct a new current frame by applying patches. The teleview viewport will have to wait for 
+a new keyframe.
 
 ```javascript
 {
