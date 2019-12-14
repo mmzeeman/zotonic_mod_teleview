@@ -13,6 +13,8 @@ update its part of the dom-tree.
 
 # Design
 
+# Technical Details
+
 ## MQTT Topics
 
 #### `model/teleview/get/topics/<id>`
