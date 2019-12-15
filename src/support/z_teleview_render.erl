@@ -37,7 +37,7 @@
 -include_lib("zotonic_core/include/zotonic.hrl").
 
 -record(state, {
-          id,
+          render_ref,
 
           template,
           context
@@ -47,24 +47,24 @@
 %% api
 %%
 
-start_link(Id, Args, Context) ->
-    gen_server:start_link({via, z_proc, {{?MODULE, Id}, Context}}, ?MODULE, [Id, Args, Context], []).
+start_link(RenderRef, Args, Context) ->
+    gen_server:start_link({via, z_proc, {{?MODULE, RenderRef}, Context}}, ?MODULE, [RenderRef, Args, Context], []).
 
 
 % render without arguments
-render(Id, Context) ->
-    gen_server:call({via, z_proc, {{?MODULE, Id}, Context}}, render).
+render(RenderRef, Context) ->
+    gen_server:call({via, z_proc, {{?MODULE, RenderRef}, Context}}, render).
 
 % render with arguments
-render(Id, Args, Context) ->
-    gen_server:call({via, z_proc, {{?MODULE, Id}, Context}}, {render, Args}).
+render(RenderRef, Args, Context) ->
+    gen_server:call({via, z_proc, {{?MODULE, RenderRef}, Context}}, {render, Args}).
 
 %%
 %% gen_server callbacks.
 %%
 
-init([Id, #{template := Template}, Context]) ->
-    {ok, #state{id=Id, template=Template, context=Context}}.
+init([Id, #{render_ref := RenderRef, template := Template}, Context]) ->
+    {ok, #state{render_ref=RenderRef, template=Template, context=Context}}.
 
 handle_call(render, _From, State) ->
     {ok, State1} = render_and_diff([], State),
@@ -93,16 +93,16 @@ code_change(_OldVsn, State, _Extra) ->
 %%
 
 % Render the template with the supplied vars and send the result to the differ.
-render_and_diff(Vars, #state{template=Template, context=Context, id=Id}=State) ->
+render_and_diff(Vars, #state{template=Template, context=Context, render_ref=RenderRef}=State) ->
     {IOList, Context1} = z_template:render_to_iolist(Template, Vars, Context),
     NewFrame = z_convert:to_binary(IOList),
 
     State1 = State#state{context=Context1},
 
-    case z_teleview_differ:new_frame(Id, NewFrame, Context) of
+    case z_teleview_differ:new_frame(RenderRef, NewFrame, Context) of
         busy ->
             %% The differ could not handle the new frame. It will be dropped.
-            lager:warning("Differ ~p is busy. Could not update view", [State#state.id]),
+            lager:warning("Differ ~p is busy. Could not update view", [RenderRef]),
             {ok, State1};
         ok ->
             {ok, State1}

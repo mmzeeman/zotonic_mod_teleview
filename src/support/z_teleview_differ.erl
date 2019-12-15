@@ -24,9 +24,9 @@
 %% Generates diffs to update remote views with a minimum use of bandwith.
 
 -record(state, {
-          id,
+          render_ref,
 
-          key_frame,
+          keyframe,
           current_frame,
           last_time=0,
 
@@ -64,8 +64,8 @@ new_frame(Id, NewFrame, Context) ->
 %% gen_server callbacks
 %%
 
-init([Id, MinTime, MaxTime, MFA, Context]) ->
-    {ok, #state{id=Id, min_time=MinTime, max_time=MaxTime, mfa=MFA, context=Context}}.
+init([RenderRef, MinTime, MaxTime, MFA, Context]) ->
+    {ok, #state{render_ref=RenderRef, min_time=MinTime, max_time=MaxTime, mfa=MFA, context=Context}}.
 
 %
 handle_call({new_frame, _Frame}, _From, #state{processing=true}=State) ->
@@ -75,8 +75,8 @@ handle_call({new_frame, Frame}, _From, #state{processing=false}=State) ->
     self() ! next_patch,
     {reply, ok, State#state{new_frame=Frame, processing=true}};
 
-handle_call(key_frame, _From, State) ->
-    {reply, State#state.key_frame, State};
+handle_call(keyframe, _From, State) ->
+    {reply, State#state.keyframe, State};
 
 handle_call(current_frame, _From, State) ->
     {reply, State#state.current_frame, State}.
@@ -88,15 +88,15 @@ handle_cast(Msg, State) ->
 %
 handle_info(next_patch, #state{processing=true,
                                new_frame=Frame,
-                               key_frame=Key,
+                               keyframe=Key,
                                current_frame=Current,
                                last_time=LastTime}=State) ->
     Patch = next_patch(Frame, Current, Key, current_time(), LastTime, State#state.min_time, State#state.max_time),
     broadcast_patch(Patch, State),
     case Patch of
-        {key_frame, _, CurrentTime} ->
+        {keyframe, _, CurrentTime} ->
             {noreply, State#state{
-                        key_frame=Frame,
+                        keyframe=Frame,
                         current_frame=Frame,
                         last_time=CurrentTime,
                         processing=false}};
@@ -124,24 +124,24 @@ broadcast_patch(Patch, #state{mfa={Module, Function, Args}}) ->
 %% Calculate the next patch.
 next_patch(Frame, Current, Key, CurrentTime, LastTime, MinTime, infinite) ->
     DeltaTime = CurrentTime - LastTime,
-    next_patch1(Frame, Current, Key, CurrentTime, DeltaTime, MinTime);
+    next_patch_1(Frame, Current, Key, CurrentTime, DeltaTime, MinTime);
 next_patch(Frame, Current, Key, CurrentTime, LastTime, MinTime, MaxTime) ->
     DeltaTime = CurrentTime - LastTime,
 
     case DeltaTime > MaxTime of
         true ->
-            {key_frame, Frame, CurrentTime};
+            {keyframe, Frame, CurrentTime};
         false ->
-            next_patch1(Frame, Current, Key, CurrentTime, DeltaTime, MinTime)
+            next_patch_1(Frame, Current, Key, CurrentTime, DeltaTime, MinTime)
     end.
 
-next_patch1(Frame, Current, Key, CurrentTime, DeltaTime, MinTime) ->
+next_patch_1(Frame, Current, Key, CurrentTime, DeltaTime, MinTime) ->
     CumulativePatch = make_patch(Key, Frame),
     case complexity(CumulativePatch, Frame) of
         too_high ->
             case DeltaTime > MinTime of
                 true ->
-                    {key_frame, Frame, CurrentTime};
+                    {keyframe, Frame, CurrentTime};
                 false ->
                     IncrementalPatch = make_patch(Current, Frame),
                     {incremental, IncrementalPatch, CurrentTime}
@@ -208,7 +208,7 @@ next_frame_test() ->
     ?assertEqual({cumulative, [], 100}, P1),
 
     P2 = next_patch(<<"jungle">>, <<"jungle">>, <<"jungle">>, 2001, 0, 10, 2000),
-    ?assertEqual({key_frame, <<"jungle">>, 2001}, P2),
+    ?assertEqual({keyframe, <<"jungle">>, 2001}, P2),
 
     %% Infinite maxtime
     P3 = next_patch(<<"jungle">>, <<"jungle">>, <<"jungle">>, 2001, 0, 10, infinite),

@@ -38,7 +38,10 @@ init([Id, Args, Context]) ->
            {z_teleview_state,
             {z_teleview_state, start_link, [Id, Args, Context]},
             permanent, 5000, worker, dynamic},
+
            {z_teleview_render_diff_sup,
-            {z_teleview_render_diff_sup, start_link, [Id, Args, Context]},
+            {z_teleview_renderers_sup, start_link, [Id, Args, Context]},
             permanent, 5000, supervisor, dynamic}
+
           ]}}.
+

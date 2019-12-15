@@ -1,6 +1,6 @@
 %% @author Maas-Maarten Zeeman <mmzeeman@xs4all.nl>
 %% @copyright 2019 Maas-Maarten Zeeman
-%% @doc TeleView Render Diff Supervisor.
+%% @doc TeleView renderer supervisor for a single render -> differ pipeline.
 
 %% Copyright 2019 Maas-Maarten Zeeman 
 %%
@@ -16,7 +16,7 @@
 %% See the License for the specific language governing permissions and
 %% limitations under the License.
 
--module(z_teleview_render_diff_sup).
+-module(z_teleview_renderer_sup).
 -author("Maas-Maarten Zeeman <mmzeeman@xs4all.nl>").
 
 -behaviour(supervisor).
@@ -24,7 +24,7 @@
 -export([start_link/3]).
 -export([init/1]).
 
--export([publish_patch/2]).
+-export([publish_event/2]).
 
 -include_lib("zotonic_core/include/zotonic.hrl").
 
@@ -44,19 +44,21 @@ start_link(Id, Args, Context) ->
 %% supervisor callback
 %%
 
-init([Id, #{ publish_topic := Topic} = Args, Context]) ->
+init([Id, #{ render_ref := RenderRef } = Args, Context]) ->
     MinTime = maps:get(differ_min_time, Args, ?MIN_TIME),
     MaxTime = maps:get(differ_max_time, Args, ?MAX_TIME),
+
+    EventTopic = <<"model/teleview/", Id/binary, $/, RenderRef/binary, "event">>,
 
     {ok, {{one_for_all, 20, 10},
           [
            {z_teleview_render,
-            {z_teleview_render, start_link, [Id, Args, Context]},
+            {z_teleview_render, start_link, [RenderRef, Args, Context]},
             permanent, 5000, worker, dynamic},
 
            {z_teleview_differ,
-            {z_teleview_differ, start_link, [Id, MinTime, MaxTime,
-                                             {?MODULE, publish_patch, [Topic, Context]},
+            {z_teleview_differ, start_link, [RenderRef, MinTime, MaxTime,
+                                             {?MODULE, publish_event, [EventTopic, Context]},
                                              Context]},
             permanent, 5000, worker, dynamic}
           ]}}.
@@ -66,17 +68,24 @@ init([Id, #{ publish_topic := Topic} = Args, Context]) ->
 %%
 
 %% Publish the patch on a topic.
-publish_patch(Patch, [Topic, Context]) ->
-    z_mqtt:publish(Topic, ?DEBUG(patch_to_map(Patch)), Context).
+publish_event(Patch, [EventTopic, Context]) ->
+    z_mqtt:publish(
+      event_topic(EventTopic, Patch),
+      patch_to_map(Patch),
+      Context).
+
+% Const
+event_topic(Topic, {keyframe, _, _}) -> <<Topic/binary, "/keyframe">>;
+event_topic(Topic, {cumulative, _, _}) -> <<Topic/binary, "/cdiff">>;
+event_topic(Topic, {incremental, _, _}) -> <<Topic/binary, "/idiff">>.
 
 % Convert the patch to a map which can be transported efficiently.
-patch_to_map({key_frame, Data, Timestamp}) ->
-    #{html => Data, ts => Timestamp};
+patch_to_map({keyframe, Data, Timestamp}) ->
+    #{html => Data,ts => Timestamp};
 patch_to_map({cumulative, Patch, Timestamp}) ->
     #{cdiff => transform_patch(Patch), ts => Timestamp};
 patch_to_map({incremental, Patch, Timestamp}) ->
     #{idiff => transform_patch(Patch), ts => Timestamp}.
-
 
 transform_patch(L) when is_list(L) ->
     transform_patch(L, []).
@@ -89,6 +98,5 @@ transform_patch([{copy, I}|Rest], Acc) ->
     transform_patch(Rest, [I, <<$c>> | Acc]);
 transform_patch([{insert, Data}|Rest], Acc) ->
     transform_patch(Rest, [Data, <<$i>> | Acc]).
-
 
 

@@ -34,6 +34,8 @@
 -record(state, {
           id,
 
+          renderers = #{}, 
+
           context
          }).
 
