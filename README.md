@@ -32,7 +32,7 @@ When placing a request on the request topic, the following response will be retu
 }
 ```
 
-#### `model/liveview/event/<id>/<renderer-ref>/+(patch_type)`
+#### `model/teleview/event/<id>/<renderer-ref>/+(patch_type)`
 
 The topic on which a renderer broadcasts its update.
 
