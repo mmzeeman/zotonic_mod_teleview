@@ -48,7 +48,7 @@ init([Id, #{ render_ref := RenderRef } = Args, Context]) ->
     MinTime = maps:get(differ_min_time, Args, ?MIN_TIME),
     MaxTime = maps:get(differ_max_time, Args, ?MAX_TIME),
 
-    EventTopic = <<"model/teleview/", Id/binary, $/, RenderRef/binary, "event">>,
+    EventTopic = <<"model/teleview/", Id/binary, $/, RenderRef/binary, "/event">>,
 
     {ok, {{one_for_all, 20, 10},
           [
