@@ -34,30 +34,35 @@
 -record(state, {
           id,
 
+          renderers_supervisor = undefined,
           renderers = #{}, 
 
           context
          }).
 
 
-start_link(Id, Args, Context) ->
-    gen_server:start_link({via, z_proc, {{?MODULE, Id}, Context}}, ?MODULE, [Id, Args, Context], []).
+start_link(Id, Supervisor, Context) ->
+    gen_server:start_link(
+      {via, z_proc, {{?MODULE, Id}, Context}}, ?MODULE, [Id, Supervisor, Context], []).
 
 
 % @doc Return the render topic which can be used for this context.
 get_topics(Id, Context) ->
     case z_proc:whereis({?MODULE, Id}, Context) of
-        Pid when is_pid(Pid) -> gen_server:call(get_topics, Pid);
-        undefined -> undefined
+        Pid when is_pid(Pid) ->
+            gen_server:call(get_topics, Pid);
+        undefined ->
+            %% This is an unknown renderer, there is no event topic.
+            undefined
     end.
-
 
 %%
 %% gen_server callbacks.
 %%
 
-
-init([Id, _Args, Context]) ->
+init([Id, Supervisor, Context]) ->
+    %% Start the renderers supervisor.
+    self() ! {start_renderers_supervisor, Supervisor, Id, Context},
     {ok, #state{id=Id, context=Context}}.
 
 handle_call(Msg, _From, State) ->
@@ -66,6 +71,20 @@ handle_call(Msg, _From, State) ->
 handle_cast(Msg, State) ->
     {stop, {unknown_cast, Msg}, State}.
 
+handle_info({start_renderers_supervisor, Sup, Id, Context}, State) ->
+    MFA = {z_teleview_renderers_sup, start_link, [Id, Context]},
+    RenderersSpec = #{id => z_teleview_renderers_sup,
+                      start => MFA, 
+                      restart => transient, 
+                      shutdown => infinity,
+                      type => supervisor,
+                      modules => [z_teleview_renderers_sup,
+                                  z_teleview_renderer_sup,
+                                  z_teleview_differ,
+                                  z_teleview_render]},
+    {ok, Pid} = supervisor:start_child(Sup, RenderersSpec),
+    link(Pid),
+    {noreply, State#state{renderers_supervisor=Pid}};
 handle_info(Info, State) ->
     ?DEBUG(Info),
     {noreply, State}.
@@ -75,6 +94,5 @@ terminate(_Reason, _State) ->
 
 code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
-
 
 

@@ -26,22 +26,31 @@
 -export([start_link/3]).
 -export([init/1]).
 
+%%
+%% Api
+%%
 
 start_link(Id, Args, Context) ->
     supervisor:start_link(
       {via, z_proc, {{?MODULE, Id}, Context}}, ?MODULE,
       [Id, Args, Context]).
 
+
+%%
+%% supervisor callback
+%%
+
 init([Id, Args, Context]) ->
-    {ok, {{one_for_all, 20, 10},
-          [
-           {z_teleview_state,
-            {z_teleview_state, start_link, [Id, Args, Context]},
-            permanent, 5000, worker, dynamic},
-
-           {z_teleview_render_diff_sup,
-            {z_teleview_renderers_sup, start_link, [Id, Args, Context]},
-            permanent, 5000, supervisor, dynamic}
-
-          ]}}.
-
+    StateSpec = #{id => z_teleview_state,
+                  start => {z_teleview_state, start_link, [Id, self(), Context]},
+                  restart => transient,
+                  shutdown => 5000,
+                  type => worker,
+                  modules => dynamic},
+    {ok, {
+       #{strategy => one_for_all,
+         intensity => 20,
+         period => 10},
+       [StateSpec]
+      }
+    }.

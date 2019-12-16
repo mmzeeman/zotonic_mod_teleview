@@ -21,51 +21,52 @@
 
 -behaviour(supervisor).
 
--export([start_link/3]).
+-export([start_link/4]).
 -export([init/1]).
 
 -export([publish_event/2]).
 
 -include_lib("zotonic_core/include/zotonic.hrl").
 
--define(MIN_TIME, 10000).
--define(MAX_TIME, 60000).
-
 %%
 %% Api
 %%
 
-start_link(Id, Args, Context) ->
+start_link(Supervisor, Id, Args, Context) ->
     supervisor:start_link(
       {via, z_proc, {{?MODULE, Id}, Context}}, ?MODULE,
-      [Id, Args, Context]).
+      [Supervisor, Id, Args, Context]).
 
 %%
 %% supervisor callback
 %%
 
-init([Id, #{ render_ref := RenderRef } = Args, Context]) ->
-    MinTime = maps:get(differ_min_time, Args, ?MIN_TIME),
-    MaxTime = maps:get(differ_max_time, Args, ?MAX_TIME),
+init([Supervisor, Id, #{render_ref := RenderRef} = Args, Context]) ->
+    Args1 = Args#{differ_event_mfa => get_event_mfa(Id, RenderRef, Context)},
 
-    EventTopic = <<"model/teleview/", Id/binary, $/, RenderRef/binary, "/event">>,
+    RenderSpec = #{id => z_teleview_render,
+                   start => {z_teleview_render, start_link, [Supervisor, Args1, Context]},
+                   restart => transient,
+                   shutdown => 1000,
+                   type => worker,
+                   modules => [z_teleview_render]},
 
-    {ok, {{one_for_all, 20, 10},
-          [
-           {z_teleview_render,
-            {z_teleview_render, start_link, [RenderRef, Args, Context]},
-            permanent, 5000, worker, dynamic},
-
-           {z_teleview_differ,
-            {z_teleview_differ, start_link, [RenderRef, MinTime, MaxTime,
-                                             {?MODULE, publish_event, [EventTopic, Context]},
-                                             Context]},
-            permanent, 5000, worker, dynamic}
-          ]}}.
+    {ok, {
+       #{strategy => one_for_all,
+         intensity => 20,
+         period => 10},
+       [RenderSpec]
+      }
+    }.
 
 %%
 %% Helpers
 %%
+
+%% Make sure the mfa needed to publish the event
+get_event_mfa(Id, RenderRef, Context) ->
+    EventTopic = <<"model/teleview/", Id/binary, $/, RenderRef/binary, "/event">>,
+    {?MODULE, publish_event, [EventTopic, Context]}.
 
 %% Publish the patch on a topic.
 publish_event(Patch, [EventTopic, Context]) ->

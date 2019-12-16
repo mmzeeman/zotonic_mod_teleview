@@ -54,19 +54,8 @@ start_teleview(Args, Context) ->
 start_teleview(Id, Args, Context) ->
     AsyncContext = z_context:prune_for_async(Context),
 
-    TeleViewSpec = #{id => Id,
-                     start => {z_teleview_sup, start_link, [Id, Args, AsyncContext]},
-                     restart => transient,
-                     type => supervisor,
-                     intensity => 5000,
-                     modules => dynamic},
-
-    case supervisor:start_child(z_utils:name_for_site(?SERVER, Context), TeleViewSpec) of
-        {ok, Pid} ->
-            {ok, Pid};
-        {error, {already_started, Pid}} ->
-            {ok, Pid}
-    end.
+    supervisor:start_child(z_utils:name_for_site(?SERVER, Context),
+                           [Id, Args, AsyncContext]).
 
 %%
 %% Supervisor callback
@@ -78,4 +67,19 @@ init(Args) ->
               {site, z_context:site(Context)},
               {module, ?MODULE}
              ]),
-    {ok, {{one_for_one, 20, 10}, []}}.
+
+    TeleviewSpec = #{id => z_teleview_sup,
+                     start => {z_teleview_sup, start_link, []},
+                     restart => transient,
+                     shutdown => infinity,
+                     type => supervisor,
+                     modules => dynamic},
+
+    {ok, {
+       #{strategy => simple_one_for_one,
+         intensity => 20,
+         period => 10},
+       [TeleviewSpec]
+      }
+    }.
+

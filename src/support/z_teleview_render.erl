@@ -31,6 +31,10 @@
     render/3
 ]).
 
+-define(MIN_TIME, 10000).
+-define(MAX_TIME, 60000).
+
+
 % gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
 
@@ -40,6 +44,8 @@
           render_ref,
 
           template,
+          differ,
+
           context
          }).
 
@@ -48,7 +54,9 @@
 %%
 
 start_link(RenderRef, Args, Context) ->
-    gen_server:start_link({via, z_proc, {{?MODULE, RenderRef}, Context}}, ?MODULE, [RenderRef, Args, Context], []).
+    gen_server:start_link({via, z_proc, {{?MODULE, RenderRef}, Context}},
+                          ?MODULE,
+                          [RenderRef, Args, Context], []).
 
 
 % render without arguments
@@ -63,7 +71,10 @@ render(RenderRef, Args, Context) ->
 %% gen_server callbacks.
 %%
 
-init([Id, #{render_ref := RenderRef, template := Template}, Context]) ->
+init([Supervisor, #{render_ref := RenderRef, template := Template}=Args, Context]) ->
+    %% Start the differ as a separate process.
+    self() ! {start_differ, Supervisor, Args},
+
     {ok, #state{render_ref=RenderRef, template=Template, context=Context}}.
 
 handle_call(render, _From, State) ->
@@ -78,6 +89,22 @@ handle_call(Msg, _From, State) ->
 handle_cast(Msg, State) ->
     {stop, {unknown_cast, Msg}, State}.
 
+handle_info({start_differ, Supervisor, #{differ_event_mfa:={_,_,_}=EventMFA}=Args}, State) ->
+    %% Start the differ as a separate process so it functions as a pipeline.
+    MinTime = maps:get(differ_min_time, Args, ?MIN_TIME),
+    MaxTime = maps:get(differ_max_time, Args, ?MAX_TIME),
+
+    MFA = {z_teleview_differ, start_link, [MinTime, MaxTime, EventMFA]},
+
+    DifferSpec = #{id => z_teleview_differ,
+                   start => MFA,
+                   shutdown => 1000,
+                   type => worker,
+                   modules => [z_teleview_differ]},
+
+    {ok, Pid} = supervisor:start_child(Supervisor, DifferSpec),
+    link(Pid),
+    {noreply, State#state{differ=Pid}}; 
 handle_info(Info, State) ->
     ?DEBUG(Info),
     {noreply, State}.
@@ -93,18 +120,19 @@ code_change(_OldVsn, State, _Extra) ->
 %%
 
 % Render the template with the supplied vars and send the result to the differ.
-render_and_diff(Vars, #state{template=Template, context=Context, render_ref=RenderRef}=State) ->
+render_and_diff(Vars, #state{template=Template, context=Context, differ=DifferPid}=State) ->
     {IOList, Context1} = z_template:render_to_iolist(Template, Vars, Context),
     NewFrame = z_convert:to_binary(IOList),
 
     State1 = State#state{context=Context1},
 
-    case z_teleview_differ:new_frame(RenderRef, NewFrame, Context) of
+    case z_teleview_differ:new_frame(DifferPid, NewFrame) of
         busy ->
             %% The differ could not handle the new frame. It will be dropped.
-            lager:warning("Differ ~p is busy. Could not update view", [RenderRef]),
+            lager:warning("Differ is busy. Could not update view", []),
             {ok, State1};
         ok ->
             {ok, State1}
     end.
  
+

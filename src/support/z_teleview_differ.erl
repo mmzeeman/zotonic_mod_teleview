@@ -24,8 +24,6 @@
 %% Generates diffs to update remote views with a minimum use of bandwith.
 
 -record(state, {
-          render_ref,
-
           keyframe,
           current_frame,
           last_time=0,
@@ -43,8 +41,8 @@
 
 %% api
 -export([
-    start_link/5,
-    new_frame/3
+    start_link/3,
+    new_frame/2
 ]).
 
 %% gen_server callbacks
@@ -54,18 +52,18 @@
 %% Api
 %% 
 
-start_link(Id, MinTime, MaxTime, {_M, _F, _A}=MFA, Context) ->
-    gen_server:start_link({via, z_proc, {{?MODULE, Id}, Context}}, ?MODULE, [Id, MinTime, MaxTime, MFA, Context], []).
+start_link(MinTime, MaxTime, {_M, _F, _A}=MFA) ->
+    gen_server:start_link(?MODULE, [MinTime, MaxTime, MFA], []).
 
-new_frame(Id, NewFrame, Context) ->
-    gen_server:call({via, z_proc, {{?MODULE, Id}, Context}}, {new_frame, NewFrame}).
+new_frame(Pid, NewFrame) ->
+    gen_server:call(Pid, {new_frame, NewFrame}).
 
 %%
 %% gen_server callbacks
 %%
 
-init([RenderRef, MinTime, MaxTime, MFA, Context]) ->
-    {ok, #state{render_ref=RenderRef, min_time=MinTime, max_time=MaxTime, mfa=MFA, context=Context}}.
+init([MinTime, MaxTime, {_M, _F, _A}=EventMFA]) ->
+    {ok, #state{min_time=MinTime, max_time=MaxTime, mfa=EventMFA}}.
 
 %
 handle_call({new_frame, _Frame}, _From, #state{processing=true}=State) ->

@@ -35,6 +35,7 @@
 %%
 
 start_link(Id, Context) ->
+    ?DEBUG("start renderers supervisor"),
     supervisor:start_link(
       {via, z_proc, {{?MODULE, Id}, Context}}, ?MODULE,
       [Id]
@@ -54,15 +55,16 @@ start_renderer(Id, Args, Context) ->
 %%
 
 init(Id) ->
-    {ok,
-     #{strategy => simple_one_for_one,
-       intensity => 20,
-       period => 10},
-     #{id => z_renderer_sup,
-       start => {z_teleview_renderer_sup, start_link, [Id]},
-       restart => transient,
-       shutdown => 5000,
-       type => supervisor,
-       modules => dynamic}
+    {ok, {
+       #{strategy => simple_one_for_one,
+         intensity => 20,
+         period => 10},
+       [#{id => z_renderer_sup,
+          start => {z_teleview_renderer_sup, start_link, [Id]},
+          restart => transient,
+          shutdown => infinity, 
+          type => supervisor,
+          modules => [z_teleview_renderer_sup]}]
+      }
     }.
 
