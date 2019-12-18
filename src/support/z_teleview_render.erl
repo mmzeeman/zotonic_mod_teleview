@@ -44,7 +44,7 @@
           render_ref,
 
           template,
-          differ,
+          differ_pid,
 
           context
          }).
@@ -104,7 +104,7 @@ handle_info({start_differ, Supervisor, #{differ_event_mfa:={_,_,_}=EventMFA}=Arg
 
     {ok, Pid} = supervisor:start_child(Supervisor, DifferSpec),
     link(Pid),
-    {noreply, State#state{differ=Pid}}; 
+    {noreply, State#state{differ_pid=Pid}}; 
 handle_info(Info, State) ->
     ?DEBUG(Info),
     {noreply, State}.
@@ -120,7 +120,7 @@ code_change(_OldVsn, State, _Extra) ->
 %%
 
 % Render the template with the supplied vars and send the result to the differ.
-render_and_diff(Vars, #state{template=Template, context=Context, differ=DifferPid}=State) ->
+render_and_diff(Vars, #state{template=Template, context=Context, differ_pid=DifferPid}=State) ->
     {IOList, Context1} = z_template:render_to_iolist(Template, Vars, Context),
     NewFrame = z_convert:to_binary(IOList),
 
