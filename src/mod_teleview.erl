@@ -34,7 +34,9 @@
 
 -export([
     start_teleview/2,
-    start_teleview/3
+    start_teleview/3,
+
+    observe_teleview_live/2
 ]).
 
 -define(SERVER, ?MODULE).
@@ -43,6 +45,29 @@ start_link(Args) ->
     {context, Context} = proplists:lookup(context, Args),
     supervisor:start_link(
       {local, z_utils:name_for_site(?SERVER, Context)}, ?MODULE, Args).
+
+%% TeleView Live components.
+%%
+%%
+observe_teleview_live({teleview_live, template, Args, Vars}, Context) ->
+    ?DEBUG({template_teleview, Args}),
+
+    %% Is this teleview already started?
+    %%
+    %% When yes, return the topic for the js component to subscribe to.
+    %%
+    %% When no, start the teleview, and return the topic to the client.
+
+    %% Start the teleview here? Probably not a good idea, better move 
+    %% that to the scomp.
+    %%
+    %% What 
+
+
+    {ok, <<"foo">>};
+observe_teleview_live({teleview_live, _T, _A, _V}, _) ->
+    ?DEBUG({teleview_live, _T, _A, _V}),
+    undefined.
 
 % @doc start_teleview without giving an explicit Id. The Id will be generated.
 start_teleview(Args, Context) ->
