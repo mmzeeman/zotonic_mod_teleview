@@ -40,7 +40,7 @@ render(Params, Vars, Context) ->
             ?DEBUG({LiveType, Attrs}),
             case z_notifier:first({teleview_live, LiveType, Attrs, Vars}, Context) of
                 undefined ->
-                    ?DEBUG("No live topic registered"),
+                    ?DEBUG("No teleview registered"),
                     {ok, <<>>};
                 {start_teleview, Details} ->
                     ?DEBUG("No live topic registered"),
