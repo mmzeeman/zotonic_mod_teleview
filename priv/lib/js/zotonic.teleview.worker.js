@@ -60,7 +60,9 @@ state.isConnected = function(model) {
 }
 
 state.nextAction = function(model) {
+}
 
+state.representation = function(model) {
 }
 
 state.render = function(model) {
