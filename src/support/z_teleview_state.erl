@@ -25,7 +25,8 @@
     start_link/3,
     get_topics/2,
 
-    start_renderer/2
+    start_renderer/2,
+    start_renderer/3
 ]).
 
 % gen_server callbacks
@@ -60,7 +61,12 @@ get_topics(Id, Context) ->
 
 % @doc Start a renderer.
 start_renderer(Id, Context) ->
-    gen_server:call({via, z_proc, {{?MODULE, Id}, Context}}, {start_renderer, Context}).
+    RenderRef = z_ids:id(),
+    start_renderer(Id, RenderRef, Context).
+
+
+start_renderer(Id, RenderRef, Context) ->
+    gen_server:call({via, z_proc, {{?MODULE, Id}, Context}}, {start_renderer, RenderRef, Context}).
 
 
 %%
@@ -72,26 +78,18 @@ init([Id, Supervisor, Context]) ->
     self() ! {start_renderers_supervisor, Supervisor, Id, Context},
     {ok, #state{id=Id, context=Context}}.
 
-handle_call({start_renderer, RenderContext}, _From, #state{renderers_supervisor=Sup}=State) ->
-    RenderRef = z_ids:id(),
-
+handle_call({start_renderer, RenderRef, RenderContext}, _From, #state{renderers_supervisor=RenderersSup}=State) when is_pid(RenderersSup) ->
     %% [TODO] Start the render process via the z_teleview_renderers_sup, and monitor it.
+    %%
 
-    RendererSpec = #{id => RenderRef,
-                     start => {z_teleview_renderer_sup, start_link, [Sup,
-                                                                     State#state.id,
-                                                                     #{render_ref => RenderRef},
-                                                                     RenderContext]}, 
-                     restart => transient, 
-                     shutdown => infinity,
-                     type => supervisor,
-                     modules => [z_teleview_renderer_sup,
-                                 z_teleview_differ,
-                                 z_teleview_render]},
+    ?DEBUG({renderers_supervisor, RenderersSup}),
 
-    {ok, Pid} = supervisor:start_child(Sup, RendererSpec),
+    {ok, Pid} = supervisor:start_child(RenderersSup, [#{render_ref => RenderRef}, RenderContext]),
+    
     _MonitorRef = erlang:monitor(process, Pid),
+
     Renderers1 = maps:put(default, Pid, State#state.renderers),
+
     {reply, {ok, Pid}, State#state{renderers=Renderers1}};
 handle_call(Msg, _From, State) ->
     {stop, {unknown_call, Msg}, State}.
@@ -101,6 +99,7 @@ handle_cast(Msg, State) ->
 
 handle_info({start_renderers_supervisor, Sup, Id, Context}, State) ->
     MFA = {z_teleview_renderers_sup, start_link, [Id, Context]},
+
     RenderersSpec = #{id => z_teleview_renderers_sup,
                       start => MFA, 
                       restart => transient, 
@@ -110,8 +109,12 @@ handle_info({start_renderers_supervisor, Sup, Id, Context}, State) ->
                                   z_teleview_renderer_sup,
                                   z_teleview_differ,
                                   z_teleview_render]},
+
     {ok, Pid} = supervisor:start_child(Sup, RenderersSpec),
     link(Pid),
+
+    ?DEBUG({renderers_supervisor, started, Pid}),
+
     {noreply, State#state{renderers_supervisor=Pid}};
 handle_info(Info, State) ->
     ?DEBUG(Info),

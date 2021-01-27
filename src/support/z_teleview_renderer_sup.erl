@@ -21,10 +21,13 @@
 
 -behaviour(supervisor).
 
--export([start_link/4]).
+-export([start_link/3]).
 -export([init/1]).
 
 -export([publish_event/2]).
+
+-define(MIN_TIME, 10000).
+-define(MAX_TIME, 60000).
 
 -include_lib("zotonic_core/include/zotonic.hrl").
 
@@ -32,20 +35,33 @@
 %% Api
 %%
 
-start_link(Supervisor, Id, Args, Context) ->
+start_link(TeleviewId, #{render_ref := RenderRef}=Args, Context) ->
+    ?DEBUG({start_link, TeleviewId, Args}),
     supervisor:start_link(
-      {via, z_proc, {{?MODULE, Id}, Context}}, ?MODULE,
-      [Supervisor, Id, Args, Context]).
+      {via, z_proc, {{?MODULE, TeleviewId, RenderRef}, Context}}, ?MODULE,
+      [TeleviewId, Args, Context]).
 
 %%
 %% supervisor callback
 %%
 
-init([Supervisor, Id, #{render_ref := RenderRef} = Args, Context]) ->
-    Args1 = Args#{differ_event_mfa => get_event_mfa(Id, RenderRef, Context)},
+init([TeleviewId, Args, Context]) ->
+    ?DEBUG({init_renderer_sup, TeleviewId, Args, self()}),
+
+    DifferSpec = #{id => z_teleview_differ,
+                   start => {z_teleview_differ, start_link,
+                             [?MIN_TIME, ?MAX_TIME, get_event_mfa(<<"tele-id">>, <<"render-id">>, Context)]},
+                   restart => transient,
+                   shutdown => 1000,
+                   type => worker,
+                   modules => [z_teleview_differ]},
+
+    Args1 = Args#{
+              template => todo
+             },
 
     RenderSpec = #{id => z_teleview_render,
-                   start => {z_teleview_render, start_link, [Supervisor, Args1, Context]},
+                   start => {z_teleview_render, start_link, [TeleviewId, self(), Args1, Context]},
                    restart => transient,
                    shutdown => 1000,
                    type => worker,
@@ -55,7 +71,7 @@ init([Supervisor, Id, #{render_ref := RenderRef} = Args, Context]) ->
        #{strategy => one_for_all,
          intensity => 20,
          period => 10},
-       [RenderSpec]
+       [DifferSpec, RenderSpec]
       }
     }.
 
@@ -64,8 +80,11 @@ init([Supervisor, Id, #{render_ref := RenderRef} = Args, Context]) ->
 %%
 
 %% Make sure the mfa needed to publish the event
-get_event_mfa(Id, RenderRef, Context) ->
-    EventTopic = <<"model/teleview/", Id/binary, $/, RenderRef/binary, "/event">>,
+get_event_mfa(_Id, _RenderRef, Context) ->
+    % EventTopic = <<"model/teleview/", Id/binary, $/, RenderRef/binary, "/event">>,
+
+    EventTopic = <<"model/todo">>,
+
     {?MODULE, publish_event, [EventTopic, Context]}.
 
 %% Publish the patch on a topic.

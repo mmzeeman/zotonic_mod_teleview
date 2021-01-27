@@ -45,6 +45,9 @@
     new_frame/2
 ]).
 
+
+-include_lib("zotonic_core/include/zotonic.hrl").
+
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
 
@@ -63,6 +66,7 @@ new_frame(Pid, NewFrame) ->
 %%
 
 init([MinTime, MaxTime, {_M, _F, _A}=EventMFA]) ->
+    ?DEBUG(differ_start),
     {ok, #state{min_time=MinTime, max_time=MaxTime, mfa=EventMFA}}.
 
 %

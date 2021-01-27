@@ -58,6 +58,8 @@ observe_teleview_live({teleview_live, template, Args, Vars}, Context) ->
     %%
     %% When no, start the teleview, and return the topic to the client.
 
+    %% mod_teleview:ensure_teleview()
+
     %% Start the teleview here? Probably not a good idea, better move 
     %% that to the scomp.
     %%
@@ -69,22 +71,29 @@ observe_teleview_live({teleview_live, _T, _A, _V}, _) ->
     ?DEBUG({teleview_live, _T, _A, _V}),
     undefined.
 
-% @doc start_teleview without giving an explicit Id. The Id will be generated.
+% @doc ensure_teleview without giving an explicit Id. The Id will be generated.
 start_teleview(Args, Context) ->
     Id = z_ids:id(),
     {ok, Pid} = start_teleview(Id, Args, Context),
     {ok, Id, Pid}.
 
-% @doc start_teleview starts a new teleview with the given Id.
+% @doc ensure_teleview starts a new teleview with the given Id.
 start_teleview(Id, Args, Context) ->
     AsyncContext = z_context:prune_for_async(Context),
 
-    supervisor:start_child(z_utils:name_for_site(?SERVER, Context),
-                           [Id, Args, AsyncContext]).
+    case supervisor:start_child(z_utils:name_for_site(?SERVER, Context), [Id, Args, AsyncContext]) of
+        {ok, Pid} ->
+            {ok, Pid};
+        {error, {already_started, Pid}} -> 
+            {ok, Pid};
+        {error, _}=Error ->
+            Error
+    end.
 
 %%
 %% Supervisor callback
 %%
+
 
 init(Args) ->
     {context, Context} = proplists:lookup(context, Args),

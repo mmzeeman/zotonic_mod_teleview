@@ -30,23 +30,39 @@ vary(_Params, _Context) -> nocache.
 %% is going to manage the view.
 
 render(Params, Vars, Context) ->
-    ?DEBUG({Params, Vars}),
+    ?DEBUG(teleview),
+    ?DEBUG({params, Params}),
+    ?DEBUG({args, Vars}),
 
-    case ?DEBUG(proplists:get_value(live, Params)) of
-        undefined ->
-            ?DEBUG("Missing live attribute"),
-            {ok, <<>>};
-        {LiveType, Attrs} ->
-            ?DEBUG({LiveType, Attrs}),
-            case z_notifier:first({teleview_live, LiveType, Attrs, Vars}, Context) of
-                undefined ->
-                    ?DEBUG("No teleview registered"),
-                    {ok, <<>>};
-                {start_teleview, Details} ->
-                    ?DEBUG("No live topic registered"),
-                    {ok, <<>>};
-                {ok, Topic} ->
-                    {ok, <<"<p>Teleview dinges</p>">>}
-            end
-    end.
+    {type, Type} = proplists:lookup(type, Params),
+    {args, Args} = proplists:lookup(args, Params),
+
+    {template, Template} = proplists:lookup(template, Params),
+    {topic, Topic} = proplists:lookup(topic, Params),
+
+    case z_notifier:first({ensure_teleview, Type, Args}, Context) of
+        X -> ?DEBUG({notifier, X})
+    end,
+
+    {ok, [<<"<div></div>">>]}.
+
+
+    %% case ?DEBUG(proplists:get_value(live, Params)) of
+    %%    undefined ->
+    %%        ?DEBUG("Missing live attribute"),
+    %%        {ok, <<>>};
+    %%    {LiveType, Attrs} ->
+    %%        ?DEBUG({LiveType, Attrs}),
+    %%        case z_notifier:first({teleview_live, LiveType, Attrs, Vars}, Context) of
+    %%            undefined ->
+    %%                ?DEBUG("No teleview registered"),
+    %%                {ok, <<>>};
+    %%           {start_teleview, Details} ->
+    %%                ?DEBUG("No live topic registered"),
+    %%              {ok, <<>>};
+    %%            {ok, Topic} ->
+    %%                {ok, <<"<p>Teleview dinges</p>">>}
+    %%        end
+    %% end.
+
 

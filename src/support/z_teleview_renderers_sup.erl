@@ -22,8 +22,7 @@
 -behaviour(supervisor).
 
 -export([
-    start_link/2,
-    start_renderer/3
+    start_link/2
 ]).
 
 -export([init/1]).
@@ -35,19 +34,11 @@
 %%
 
 start_link(Id, Context) ->
-    ?DEBUG("start renderers supervisor"),
+    ?DEBUG({"start renderers supervisor", Id}),
     supervisor:start_link(
-      {via, z_proc, {{?MODULE, Id}, Context}}, ?MODULE,
+      ?MODULE,
       [Id]
      ).
-
-%% Start a new renderer.
-start_renderer(Id, Args, Context) ->
-    %% Each renderer will have it's own context which 
-    %% will make it multi-language and acl context rendering
-    %% possible.
-    supervisor:start_child({via, z_proc, {{?MODULE, Id}, Context}},
-                           [Args, Context]).
 
 
 %%
