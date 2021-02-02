@@ -121,7 +121,7 @@ render_and_diff(Vars, #state{template=Template, context=Context, differ_pid=Diff
 
     State1 = State#state{context=Context1},
 
-    case z_teleview_differ:new_frame(DifferPid, NewFrame) of
+    case ?DEBUG(z_teleview_differ:new_frame(DifferPid, NewFrame)) of
         busy ->
             %% The differ could not handle the new frame. It will be dropped.
             lager:warning("Differ is busy. Could not update view", []),

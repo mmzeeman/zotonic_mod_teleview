@@ -26,6 +26,8 @@
 -export([start_link/3]).
 -export([init/1]).
 
+-include_lib("zotonic_core/include/zotonic.hrl").
+
 %%
 %% Api
 %%
@@ -41,6 +43,8 @@ start_link(Id, Args, Context) ->
 %%
 
 init([Id, Args, Context]) ->
+    ?DEBUG(start_teleview_sup),
+
     StateSpec = #{id => z_teleview_state,
                   start => {z_teleview_state, start_link, [Id, self(), Args, Context]},
                   restart => transient,

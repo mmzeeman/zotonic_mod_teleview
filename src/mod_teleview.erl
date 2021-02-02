@@ -52,8 +52,7 @@ start_teleview(Args, Context) ->
 % @doc ensure_teleview starts a new teleview with the given Id.
 start_teleview(Id, #{ <<"template">> := _Template } = Args, Context) ->
     AsyncContext = z_context:prune_for_async(Context),
-
-    case supervisor:start_child(z_utils:name_for_site(?SERVER, Context), [Id, Args, AsyncContext]) of
+    case ?DEBUG(supervisor:start_child(z_utils:name_for_site(?SERVER, Context), [Id, Args, AsyncContext])) of
         {ok, _Pid} ->
             {ok, Id};
         {error, {already_started, _Pid}} -> 

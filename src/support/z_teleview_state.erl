@@ -67,7 +67,8 @@ start_renderer(TeleviewId, Args, Context) ->
 
 
 start_renderer(TeleviewId, RendererId, Args, Context) ->
-    case gen_server:call({via, z_proc, {{?MODULE, TeleviewId}, Context}}, {start_renderer, RendererId, Args, Context}) of
+    case gen_server:call({via, z_proc, {{?MODULE, TeleviewId}, Context}},
+                         {start_renderer, RendererId, Args, Context}) of
         {ok, _Pid} ->
             {ok, RendererId};
         {error, {already_started, _Pid}} ->
@@ -99,8 +100,21 @@ init([Id, Supervisor, #{ <<"topic">> := Topic }=Args, Context]) ->
         
     {ok, #state{id=Id, args=Args, context=Context}}.
 
-handle_call({start_renderer, RendererId, Args, RenderContext}, _From, #state{renderers_supervisor=RenderersSup}=State) when is_pid(RenderersSup) ->
-    case supervisor:start_child(RenderersSup, [RendererId, Args, RenderContext]) of
+handle_call({start_renderer, RendererId, Args, RenderContext}, _From,
+            #state{renderers_supervisor=RenderersSup,
+                   args=TeleviewArgs}=State) when is_pid(RenderersSup) ->
+
+    Args1 = case maps:is_key(<<"template">>, Args) of
+                true -> Args;
+                false -> Args#{template => maps:get(<<"template">>, TeleviewArgs)}
+            end,
+
+    PublishTopic = [model, teleview, event, State#state.id, RendererId],
+
+    ?DEBUG(PublishTopic),
+
+    case supervisor:start_child(RenderersSup, [RendererId, PublishTopic, Args1,
+                                               z_context:prune_for_async(RenderContext)]) of
                     {ok, Pid} ->
                         _MonitorRef = erlang:monitor(process, Pid),
                         Renderers1 = maps:put(RendererId, Pid, State#state.renderers),
@@ -158,8 +172,8 @@ code_change(_OldVsn, State, _Extra) ->
 trigger_render(TeleviewId, Msg, Renderers, Context) ->
     ?DEBUG({trigger_render, Renderers}),
 
-    maps:map(fun(RendererId, RendererSup) ->
-                     %% What to sent?
+    maps:map(fun(RendererId, _RendererSup) ->
+                     %% [TODO] What should be in the message?
                      z_teleview_render:render(TeleviewId, RendererId, Msg, Context)
              end,
              Renderers),

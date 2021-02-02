@@ -21,7 +21,7 @@
 
 -behaviour(supervisor).
 
--export([start_link/4]).
+-export([start_link/5]).
 -export([init/1]).
 
 -export([publish_event/2]).
@@ -35,22 +35,24 @@
 %% Api
 %%
 
-start_link(TeleviewId, RendererId, Args, Context) ->
-    ?DEBUG({start_link, TeleviewId, RendererId, Args}),
+start_link(TeleviewId, RendererId, Topic, Args, Context) ->
+    ?DEBUG({start_link, TeleviewId, RendererId, Topic, Args}),
+
+    AsyncContext = z_context:prune_for_async(Context),
     supervisor:start_link(
       {via, z_proc, {{?MODULE, TeleviewId, RendererId}, Context}}, ?MODULE,
-      [TeleviewId, RendererId, Args, Context]).
+      [TeleviewId, RendererId, Topic, Args, AsyncContext]).
 
 %%
 %% supervisor callback
 %%
 
-init([TeleviewId, RendererId, Args, Context]) ->
-    ?DEBUG({init_renderer_sup, TeleviewId, Args, self()}),
+init([TeleviewId, RendererId, Topic, Args, Context]) ->
+    ?DEBUG({init_renderer_sup, TeleviewId, Topic, Args, self()}),
 
     DifferSpec = #{id => z_teleview_differ,
                    start => {z_teleview_differ, start_link,
-                             [?MIN_TIME, ?MAX_TIME, get_event_mfa(<<"tele-id">>, <<"render-id">>, Context)]},
+                             [?MIN_TIME, ?MAX_TIME, Topic, Context]},
                    restart => transient,
                    shutdown => 1000,
                    type => worker,

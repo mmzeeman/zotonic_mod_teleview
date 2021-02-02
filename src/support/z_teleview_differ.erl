@@ -36,12 +36,14 @@
           mfa=undefined,
 
           processing=false,
+
+          topic,
           context :: zotonic:context()
 }).
 
 %% api
 -export([
-    start_link/3,
+    start_link/4,
     new_frame/2
 ]).
 
@@ -55,8 +57,8 @@
 %% Api
 %% 
 
-start_link(MinTime, MaxTime, {_M, _F, _A}=MFA) ->
-    gen_server:start_link(?MODULE, [MinTime, MaxTime, MFA], []).
+start_link(MinTime, MaxTime, Topic, Context) ->
+    gen_server:start_link(?MODULE, [MinTime, MaxTime, Topic, Context], []).
 
 new_frame(Pid, NewFrame) ->
     gen_server:call(Pid, {new_frame, NewFrame}).
@@ -65,9 +67,9 @@ new_frame(Pid, NewFrame) ->
 %% gen_server callbacks
 %%
 
-init([MinTime, MaxTime, {_M, _F, _A}=EventMFA]) ->
+init([MinTime, MaxTime, Topic, Context]) ->
     ?DEBUG(differ_start),
-    {ok, #state{min_time=MinTime, max_time=MaxTime, mfa=EventMFA}}.
+    {ok, #state{min_time=MinTime, max_time=MaxTime, topic=Topic, context=Context}}.
 
 %
 handle_call({new_frame, _Frame}, _From, #state{processing=true}=State) ->
@@ -120,8 +122,12 @@ code_change(_OldVsn, State, _Extra) ->
 %% helpers
 %%
 
-broadcast_patch(Patch, #state{mfa={Module, Function, Args}}) ->
-    Module:Function(Patch, Args).
+broadcast_patch(Patch, #state{topic=Topic, context=Context}) ->
+    ?DEBUG(Patch),
+    JSON = patch_to_json(Patch),
+
+    z_mqtt:publish(Topic, JSON, Context).
+
 
 %% Calculate the next patch.
 next_patch(Frame, Current, Key, CurrentTime, LastTime, MinTime, infinite) ->
@@ -187,6 +193,24 @@ estimate_size_element(B) when is_binary(B) -> size(B).
 
 current_time() ->
     erlang:system_time(millisecond).
+
+patch_to_json({keyframe, Frame, Timestamp}) ->
+    [{type, keyframe}, {frame, Frame}, {ts, Timestamp}];
+
+patch_to_json({cumulative, Patch, Timestamp}) ->
+    [{type, cumulative}, {patch, patch_to_list(Patch, [])}, {ts, Timestamp}];
+
+patch_to_json({incremental, Patch, Timestamp}) ->
+    [{type, incremental}, {patch, patch_to_list(Patch, [])}, {ts, Timestamp}].
+    
+patch_to_list([], Acc) ->
+    lists:reverse(Acc);
+patch_to_list([{copy, N} | Rest], Acc) ->
+    patch_to_list(Rest, [N, c | Acc]);
+patch_to_list([{skip, N} | Rest], Acc) ->
+    patch_to_list(Rest, [N, s | Acc]);
+patch_to_list([{insert, Bin} | Rest], Acc) ->
+    patch_to_list(Rest, [Bin, i | Acc]).
 
 
 %%
