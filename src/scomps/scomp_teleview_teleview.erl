@@ -37,9 +37,6 @@ render(Params, Vars, Context) ->
     {type, Type} = proplists:lookup(type, Params),
     {args, Args} = proplists:lookup(args, Params),
 
-    {template, Template} = proplists:lookup(template, Params),
-    {topic, Topic} = proplists:lookup(topic, Params),
-
     case z_notifier:first({ensure_teleview, Type, Args}, Context) of
         X -> ?DEBUG({notifier, X})
     end,

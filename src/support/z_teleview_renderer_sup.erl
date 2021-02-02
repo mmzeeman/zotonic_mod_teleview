@@ -21,7 +21,7 @@
 
 -behaviour(supervisor).
 
--export([start_link/3]).
+-export([start_link/4]).
 -export([init/1]).
 
 -export([publish_event/2]).
@@ -35,17 +35,17 @@
 %% Api
 %%
 
-start_link(TeleviewId, #{render_ref := RenderRef}=Args, Context) ->
-    ?DEBUG({start_link, TeleviewId, Args}),
+start_link(TeleviewId, RendererId, Args, Context) ->
+    ?DEBUG({start_link, TeleviewId, RendererId, Args}),
     supervisor:start_link(
-      {via, z_proc, {{?MODULE, TeleviewId, RenderRef}, Context}}, ?MODULE,
-      [TeleviewId, Args, Context]).
+      {via, z_proc, {{?MODULE, TeleviewId, RendererId}, Context}}, ?MODULE,
+      [TeleviewId, RendererId, Args, Context]).
 
 %%
 %% supervisor callback
 %%
 
-init([TeleviewId, Args, Context]) ->
+init([TeleviewId, RendererId, Args, Context]) ->
     ?DEBUG({init_renderer_sup, TeleviewId, Args, self()}),
 
     DifferSpec = #{id => z_teleview_differ,
@@ -56,12 +56,8 @@ init([TeleviewId, Args, Context]) ->
                    type => worker,
                    modules => [z_teleview_differ]},
 
-    Args1 = Args#{
-              template => todo
-             },
-
     RenderSpec = #{id => z_teleview_render,
-                   start => {z_teleview_render, start_link, [TeleviewId, self(), Args1, Context]},
+                   start => {z_teleview_render, start_link, [TeleviewId, RendererId, self(), Args, Context]},
                    restart => transient,
                    shutdown => 1000,
                    type => worker,

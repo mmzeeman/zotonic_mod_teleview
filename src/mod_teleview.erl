@@ -33,10 +33,7 @@
 -export([init/1]).
 
 -export([
-    start_teleview/2,
-    start_teleview/3,
-
-    observe_teleview_live/2
+    start_teleview/2
 ]).
 
 -define(SERVER, ?MODULE).
@@ -46,46 +43,21 @@ start_link(Args) ->
     supervisor:start_link(
       {local, z_utils:name_for_site(?SERVER, Context)}, ?MODULE, Args).
 
-%% TeleView Live components.
-%%
-%%
-observe_teleview_live({teleview_live, template, Args, Vars}, Context) ->
-    ?DEBUG({template_teleview, Args}),
-
-    %% Is this teleview already started?
-    %%
-    %% When yes, return the topic for the js component to subscribe to.
-    %%
-    %% When no, start the teleview, and return the topic to the client.
-
-    %% mod_teleview:ensure_teleview()
-
-    %% Start the teleview here? Probably not a good idea, better move 
-    %% that to the scomp.
-    %%
-    %% What 
-
-
-    {ok, <<"foo">>};
-observe_teleview_live({teleview_live, _T, _A, _V}, _) ->
-    ?DEBUG({teleview_live, _T, _A, _V}),
-    undefined.
 
 % @doc ensure_teleview without giving an explicit Id. The Id will be generated.
 start_teleview(Args, Context) ->
-    Id = z_ids:id(),
-    {ok, Pid} = start_teleview(Id, Args, Context),
-    {ok, Id, Pid}.
+    Id = erlang:phash2(Args),
+    start_teleview(Id, Args, Context).
 
 % @doc ensure_teleview starts a new teleview with the given Id.
-start_teleview(Id, Args, Context) ->
+start_teleview(Id, #{ <<"template">> := _Template } = Args, Context) ->
     AsyncContext = z_context:prune_for_async(Context),
 
     case supervisor:start_child(z_utils:name_for_site(?SERVER, Context), [Id, Args, AsyncContext]) of
-        {ok, Pid} ->
-            {ok, Pid};
-        {error, {already_started, Pid}} -> 
-            {ok, Pid};
+        {ok, _Pid} ->
+            {ok, Id};
+        {error, {already_started, _Pid}} -> 
+            {ok, Id};
         {error, _}=Error ->
             Error
     end.

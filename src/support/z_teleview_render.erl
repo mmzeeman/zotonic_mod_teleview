@@ -26,7 +26,7 @@
 
 % api
 -export([
-    start_link/4,
+    start_link/5,
     render/3,
     render/4
 ]).
@@ -38,7 +38,9 @@
 -include_lib("zotonic_core/include/zotonic.hrl").
 
 -record(state, {
-          render_ref,
+          teleview_id,
+          renderer_id,
+          args,
 
           template,
           differ_pid,
@@ -50,35 +52,39 @@
 %% api
 %%
 
-start_link(TeleviewId, SupervisorPid, #{ render_ref := RenderRef} = Args, Context) ->
-    gen_server:start_link({via, z_proc, {{?MODULE, TeleviewId, RenderRef}, Context}},
+start_link(TeleviewId, RendererId, SupervisorPid, Args, Context) ->
+    gen_server:start_link({via, z_proc, {{?MODULE, TeleviewId, RendererId}, Context}},
                           ?MODULE,
-                          [SupervisorPid, Args, Context], []).
+                          [SupervisorPid, TeleviewId, RendererId, Args, Context], []).
 
 
 % render without arguments
-render(TeleviewId, RenderRef, Context) ->
-    gen_server:call({via, z_proc, {{?MODULE, TeleviewId, RenderRef}, Context}}, render).
+render(TeleviewId, RenderId, Context) ->
+    gen_server:call({via, z_proc, {{?MODULE, TeleviewId, RenderId}, Context}}, render).
 
 % render with arguments
-render(TeleviewId, RenderRef, Args, Context) ->
-    gen_server:call({via, z_proc, {{?MODULE, TeleviewId, RenderRef}, Context}}, {render, Args}).
+render(TeleviewId, RenderId, Args, Context) ->
+    gen_server:call({via, z_proc, {{?MODULE, TeleviewId, RenderId}, Context}}, {render, Args}).
 
 %%
 %% gen_server callbacks.
 %%
 
-init([Supervisor, #{render_ref := RenderRef, template := Template}=Args, Context]) ->
+init([Supervisor, TeleviewId, RendererId, #{template := Template}=Args, Context]) ->
     ?DEBUG(render_start),
 
+    %% Get the differ pid from the supervisor. Note that this can't be done in the
+    %% init, otherwise the supervisor will deadlock causing a timeout.
     self() ! {get_differ_pid, Supervisor},
 
-    {ok, #state{render_ref=RenderRef, template=Template, context=Context}}.
+    {ok, #state{teleview_id=TeleviewId, renderer_id=RendererId, template=Template, args=Args, context=Context}}.
 
 handle_call(render, _From, State) ->
+    ?DEBUG(render),
     {ok, State1} = render_and_diff([], State),
     {reply, ok, State1};
 handle_call({render, Vars}, _From, State) ->
+    ?DEBUG({render, Vars}),
     {ok, State1} = render_and_diff(Vars, State),
     {reply, ok, State1};
 handle_call(Msg, _From, State) ->
@@ -87,25 +93,7 @@ handle_call(Msg, _From, State) ->
 handle_cast(Msg, State) ->
     {stop, {unknown_cast, Msg}, State}.
 
-%handle_info({start_differ, Supervisor, #{differ_event_mfa:={_,_,_}=EventMFA}=Args}, State) ->
-%    %% Start the differ as a separate process so it functions as a pipeline.
-%    MinTime = maps:get(differ_min_time, Args, ?MIN_TIME),
-%    MaxTime = maps:get(differ_max_time, Args, ?MAX_TIME),
-%
-%    MFA = {z_teleview_differ, start_link, [MinTime, MaxTime, EventMFA]},
-%
-%    DifferSpec = #{id => z_teleview_differ,
-%                   start => MFA,
-%                   shutdown => 1000,
-%                   type => worker,
-%                   modules => [z_teleview_differ]},
-%
-%    {ok, Pid} = supervisor:start_child(Supervisor, DifferSpec),
-%    link(Pid),
-%    {noreply, State#state{differ_pid=Pid}}; 
 handle_info({get_differ_pid, Supervisor}, State) ->
-    ?DEBUG({sup_pid, Supervisor}),
-
     case get_differ_pid(Supervisor) of
         undefined ->
             {noreply, State}; 
@@ -144,7 +132,7 @@ render_and_diff(Vars, #state{template=Template, context=Context, differ_pid=Diff
  
 % Get the pid of the differ from the supervisor.
 get_differ_pid(SupervisorPid) when is_pid(SupervisorPid) ->
-    get_differ_pid(?DEBUG(supervisor:which_children(SupervisorPid)));
+    get_differ_pid(supervisor:which_children(SupervisorPid));
 get_differ_pid([]) ->
     undefined;
 get_differ_pid([{z_teleview_differ, Pid, _, _}| _Rest]) ->

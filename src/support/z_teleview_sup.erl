@@ -42,7 +42,7 @@ start_link(Id, Args, Context) ->
 
 init([Id, Args, Context]) ->
     StateSpec = #{id => z_teleview_state,
-                  start => {z_teleview_state, start_link, [Id, self(), Context]},
+                  start => {z_teleview_state, start_link, [Id, self(), Args, Context]},
                   restart => transient,
                   shutdown => 5000,
                   type => worker,

@@ -45,7 +45,7 @@ start_link(Id, Context) ->
 %% supervisor callback
 %%
 
-init(Id) ->
+init([Id]) ->
     {ok, {
        #{strategy => simple_one_for_one,
          intensity => 20,

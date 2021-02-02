@@ -22,10 +22,9 @@
 
 % api
 -export([
-    start_link/3,
+    start_link/4,
     get_topics/2,
 
-    start_renderer/2,
     start_renderer/3
 ]).
 
@@ -37,6 +36,8 @@
 -record(state, {
           id,
 
+          args, 
+
           renderers_supervisor = undefined,
           renderers = #{}, 
 
@@ -44,9 +45,9 @@
          }).
 
 % @doc Start the state process.
-start_link(Id, Supervisor, Context) ->
+start_link(Id, Supervisor, Args, Context) ->
     gen_server:start_link(
-      {via, z_proc, {{?MODULE, Id}, Context}}, ?MODULE, [Id, Supervisor, Context], []).
+      {via, z_proc, {{?MODULE, Id}, Context}}, ?MODULE, [Id, Supervisor, Args, Context], []).
 
 
 % @doc Return the render topic which can be used for this context.
@@ -60,37 +61,55 @@ get_topics(Id, Context) ->
     end.
 
 % @doc Start a renderer.
-start_renderer(Id, Context) ->
-    RenderRef = z_ids:id(),
-    start_renderer(Id, RenderRef, Context).
+start_renderer(TeleviewId, Args, Context) ->
+    RenderId = erlang:phash2(Args),
+    start_renderer(TeleviewId, RenderId, Args, Context).
 
 
-start_renderer(Id, RenderRef, Context) ->
-    gen_server:call({via, z_proc, {{?MODULE, Id}, Context}}, {start_renderer, RenderRef, Context}).
+start_renderer(TeleviewId, RendererId, Args, Context) ->
+    case gen_server:call({via, z_proc, {{?MODULE, TeleviewId}, Context}}, {start_renderer, RendererId, Args, Context}) of
+        {ok, _Pid} ->
+            {ok, RendererId};
+        {error, {already_started, _Pid}} ->
+            {ok, RendererId};
+        {error, _}=Error ->
+            Error
+    end.
 
 
 %%
 %% gen_server callbacks.
 %%
 
-init([Id, Supervisor, Context]) ->
+init([Id, Supervisor, #{ <<"topic">> := Topic }=Args, Context]) ->
     %% Start the renderers supervisor.
     self() ! {start_renderers_supervisor, Supervisor, Id, Context},
-    {ok, #state{id=Id, context=Context}}.
 
-handle_call({start_renderer, RenderRef, RenderContext}, _From, #state{renderers_supervisor=RenderersSup}=State) when is_pid(RenderersSup) ->
-    %% [TODO] Start the render process via the z_teleview_renderers_sup, and monitor it.
-    %%
+    %% Subscribe to event topic.
+    case z_mqtt:subscribe(Topic, Context) of
+        ok -> ok;
+        {error, _}=Error ->
+            % log warning
+            z:warning("Teleview could not subscribe to topic: ~p, reason: ~p",
+                      [Topic, Error],
+                      [{module, ?MODULE}, {line, ?LINE}],
+                      Context),
+            ok
+    end,
+        
+    {ok, #state{id=Id, args=Args, context=Context}}.
 
-    ?DEBUG({renderers_supervisor, RenderersSup}),
-
-    {ok, Pid} = supervisor:start_child(RenderersSup, [#{render_ref => RenderRef}, RenderContext]),
-    
-    _MonitorRef = erlang:monitor(process, Pid),
-
-    Renderers1 = maps:put(default, Pid, State#state.renderers),
-
-    {reply, {ok, Pid}, State#state{renderers=Renderers1}};
+handle_call({start_renderer, RendererId, Args, RenderContext}, _From, #state{renderers_supervisor=RenderersSup}=State) when is_pid(RenderersSup) ->
+    case supervisor:start_child(RenderersSup, [RendererId, Args, RenderContext]) of
+                    {ok, Pid} ->
+                        _MonitorRef = erlang:monitor(process, Pid),
+                        Renderers1 = maps:put(RendererId, Pid, State#state.renderers),
+                        {reply, {ok, Pid}, State#state{renderers=Renderers1}};
+                    {error, {already_started, Pid}} ->
+                        {reply, {ok, Pid}, State};
+                    {error, Error} ->
+                        {reply, {error, {could_not_start, Error}}, State}
+    end;
 handle_call(Msg, _From, State) ->
     {stop, {unknown_call, Msg}, State}.
 
@@ -113,9 +132,15 @@ handle_info({start_renderers_supervisor, Sup, Id, Context}, State) ->
     {ok, Pid} = supervisor:start_child(Sup, RenderersSpec),
     link(Pid),
 
-    ?DEBUG({renderers_supervisor, started, Pid}),
-
     {noreply, State#state{renderers_supervisor=Pid}};
+handle_info({mqtt_msg, Msg}, State) ->
+    ?DEBUG(Msg),
+    %% Received a message from the mqtt subscription
+
+    %% Trigger a render on all renderers.
+    trigger_render(State#state.id, Msg, State#state.renderers, State#state.context),
+
+    {noreply, State};
 handle_info(Info, State) ->
     ?DEBUG(Info),
     {noreply, State}.
@@ -125,4 +150,21 @@ terminate(_Reason, _State) ->
 
 code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
+
+%%
+%% Helpers
+%%
+
+trigger_render(TeleviewId, Msg, Renderers, Context) ->
+    ?DEBUG({trigger_render, Renderers}),
+
+    maps:map(fun(RendererId, RendererSup) ->
+                     %% What to sent?
+                     z_teleview_render:render(TeleviewId, RendererId, Msg, Context)
+             end,
+             Renderers),
+
+
+    ok.
+
 
