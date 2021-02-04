@@ -77,14 +77,6 @@ init([TeleviewId, RendererId, Topic, Args, Context]) ->
 %% Helpers
 %%
 
-%% Make sure the mfa needed to publish the event
-get_event_mfa(_Id, _RenderRef, Context) ->
-    % EventTopic = <<"model/teleview/", Id/binary, $/, RenderRef/binary, "/event">>,
-
-    EventTopic = <<"model/todo">>,
-
-    {?MODULE, publish_event, [EventTopic, Context]}.
-
 %% Publish the patch on a topic.
 publish_event(Patch, [EventTopic, Context]) ->
     z_mqtt:publish(

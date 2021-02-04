@@ -44,12 +44,12 @@ start_link(Args) ->
       {local, z_utils:name_for_site(?SERVER, Context)}, ?MODULE, Args).
 
 
-% @doc ensure_teleview without giving an explicit Id. The Id will be generated.
+% @doc start_teleview without giving an explicit Id. The Id will be generated.
 start_teleview(Args, Context) ->
     Id = erlang:phash2(Args),
     start_teleview(Id, Args, Context).
 
-% @doc ensure_teleview starts a new teleview with the given Id.
+% @doc start_teleview starts a new teleview with the given Id.
 start_teleview(Id, #{ <<"template">> := _Template } = Args, Context) ->
     AsyncContext = z_context:prune_for_async(Context),
     case ?DEBUG(supervisor:start_child(z_utils:name_for_site(?SERVER, Context), [Id, Args, AsyncContext])) of

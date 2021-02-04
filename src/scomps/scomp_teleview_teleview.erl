@@ -38,28 +38,28 @@ render(Params, Vars, Context) ->
     {args, Args} = proplists:lookup(args, Params),
 
     case z_notifier:first({ensure_teleview, Type, Args}, Context) of
-        X -> ?DEBUG({notifier, X})
-    end,
+        {ok, PublishTopic} ->
+            %% needed here. 
+            %%
+            %% 1. the topic to update the teleview.
+            %% 2. the current state of the teleview to show immediately
+            %% 3. Id for the div
+            %% 4. Code to initialize the client side of the teleview.
+            %%
+            %%
+            
+            Id = z_ids:identifier(),
 
-    {ok, [<<"<div></div>">>]}.
+            ?DEBUG({notifier, PublishTopic}),
 
+            Subscribe = [<<"cotonic.broker.subscribe('bridge/origin/">>, PublishTopic, <<"/+type', function(m, a) { console.log('patch', a, m) } )">>], 
 
-    %% case ?DEBUG(proplists:get_value(live, Params)) of
-    %%    undefined ->
-    %%        ?DEBUG("Missing live attribute"),
-    %%        {ok, <<>>};
-    %%    {LiveType, Attrs} ->
-    %%        ?DEBUG({LiveType, Attrs}),
-    %%        case z_notifier:first({teleview_live, LiveType, Attrs, Vars}, Context) of
-    %%            undefined ->
-    %%                ?DEBUG("No teleview registered"),
-    %%                {ok, <<>>};
-    %%           {start_teleview, Details} ->
-    %%                ?DEBUG("No live topic registered"),
-    %%              {ok, <<>>};
-    %%            {ok, Topic} ->
-    %%                {ok, <<"<p>Teleview dinges</p>">>}
-    %%        end
-    %% end.
+            Div = z_tags:render_tag(<<"div">>, [{<<"id">>, Id}], [ ]),
+            Script = z_tags:render_tag(<<"script">>, [], [<<"if (typeof cotonic === 'undefined')\n { window.addEventListener('cotonic-ready', function() {">>, Subscribe, <<} ") } else { ">>, Subscribe, <<" }">>]),
 
+            {ok, [Div, Script]};
+
+        {error, _E}=Error ->
+            {error, Error}
+    end.
 

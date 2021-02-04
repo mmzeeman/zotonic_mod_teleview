@@ -30,8 +30,8 @@
 
           new_frame,
 
-          min_time=10000, 
-          max_time=60000,  % integer in ms | infinite
+          min_time=10000 :: pos_integer(), 
+          max_time=60000 :: pos_integer() | infinite,  % integer in ms | infinite
 
           mfa=undefined,
 
@@ -122,12 +122,14 @@ code_change(_OldVsn, State, _Extra) ->
 %% helpers
 %%
 
-broadcast_patch(Patch, #state{topic=Topic, context=Context}) ->
-    ?DEBUG(Patch),
-    JSON = patch_to_json(Patch),
-
-    z_mqtt:publish(Topic, JSON, Context).
-
+broadcast_patch({keyframe, Frame, Ts}, #state{topic=Topic, context=Context}) ->
+    ?DEBUG(z_mqtt:publish(Topic ++ [keyframe], [{frame, Frame}, {ts, Ts}], z_acl:sudo(Context)));
+broadcast_patch({incremental, Patch, Ts}, #state{topic=Topic, context=Context}) ->
+    List = patch_to_list(Patch, []),
+    ?DEBUG(z_mqtt:publish(Topic ++ [incremental], [{patch, List}, {ts, Ts}], z_acl:sudo(Context)));
+broadcast_patch({cumulative, Patch, Ts}, #state{topic=Topic, context=Context}) ->
+    List = patch_to_list(Patch, []),
+    ?DEBUG(z_mqtt:publish(Topic ++ [cumulative], [{patch, List}, {ts, Ts}], z_acl:sudo(Context))).
 
 %% Calculate the next patch.
 next_patch(Frame, Current, Key, CurrentTime, LastTime, MinTime, infinite) ->
@@ -194,14 +196,6 @@ estimate_size_element(B) when is_binary(B) -> size(B).
 current_time() ->
     erlang:system_time(millisecond).
 
-patch_to_json({keyframe, Frame, Timestamp}) ->
-    [{type, keyframe}, {frame, Frame}, {ts, Timestamp}];
-
-patch_to_json({cumulative, Patch, Timestamp}) ->
-    [{type, cumulative}, {patch, patch_to_list(Patch, [])}, {ts, Timestamp}];
-
-patch_to_json({incremental, Patch, Timestamp}) ->
-    [{type, incremental}, {patch, patch_to_list(Patch, [])}, {ts, Timestamp}].
     
 patch_to_list([], Acc) ->
     lists:reverse(Acc);

@@ -62,21 +62,8 @@ get_topics(Id, Context) ->
 
 % @doc Start a renderer.
 start_renderer(TeleviewId, Args, Context) ->
-    RenderId = erlang:phash2(Args),
-    start_renderer(TeleviewId, RenderId, Args, Context).
-
-
-start_renderer(TeleviewId, RendererId, Args, Context) ->
-    case gen_server:call({via, z_proc, {{?MODULE, TeleviewId}, Context}},
-                         {start_renderer, RendererId, Args, Context}) of
-        {ok, _Pid} ->
-            {ok, RendererId};
-        {error, {already_started, _Pid}} ->
-            {ok, RendererId};
-        {error, _}=Error ->
-            Error
-    end.
-
+    gen_server:call({via, z_proc, {{?MODULE, TeleviewId}, Context}},
+                    {start_renderer, Args, Context}).
 
 %%
 %% gen_server callbacks.
@@ -100,7 +87,7 @@ init([Id, Supervisor, #{ <<"topic">> := Topic }=Args, Context]) ->
         
     {ok, #state{id=Id, args=Args, context=Context}}.
 
-handle_call({start_renderer, RendererId, Args, RenderContext}, _From,
+handle_call({start_renderer, Args, RenderContext}, _From,
             #state{renderers_supervisor=RenderersSup,
                    args=TeleviewArgs}=State) when is_pid(RenderersSup) ->
 
@@ -109,7 +96,9 @@ handle_call({start_renderer, RendererId, Args, RenderContext}, _From,
                 false -> Args#{template => maps:get(<<"template">>, TeleviewArgs)}
             end,
 
-    PublishTopic = [model, teleview, event, State#state.id, RendererId],
+    RendererId = erlang:phash2(Args1),
+
+    PublishTopic = z_mqtt:flatten_topic([model, teleview, event, State#state.id, RendererId]),
 
     ?DEBUG(PublishTopic),
 
@@ -118,9 +107,11 @@ handle_call({start_renderer, RendererId, Args, RenderContext}, _From,
                     {ok, Pid} ->
                         _MonitorRef = erlang:monitor(process, Pid),
                         Renderers1 = maps:put(RendererId, Pid, State#state.renderers),
-                        {reply, {ok, Pid}, State#state{renderers=Renderers1}};
-                    {error, {already_started, Pid}} ->
-                        {reply, {ok, Pid}, State};
+
+                        {reply, {ok, RendererId, PublishTopic}, State#state{renderers=Renderers1}};
+                    {error, {already_started, _Pid}} ->
+
+                        {reply, {ok, RendererId, PublishTopic}, State};
                     {error, Error} ->
                         {reply, {error, {could_not_start, Error}}, State}
     end;
@@ -148,9 +139,6 @@ handle_info({start_renderers_supervisor, Sup, Id, Context}, State) ->
 
     {noreply, State#state{renderers_supervisor=Pid}};
 handle_info({mqtt_msg, Msg}, State) ->
-    ?DEBUG(Msg),
-    %% Received a message from the mqtt subscription
-
     %% Trigger a render on all renderers.
     trigger_render(State#state.id, Msg, State#state.renderers, State#state.context),
 

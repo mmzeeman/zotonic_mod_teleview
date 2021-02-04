@@ -71,8 +71,6 @@ render(TeleviewId, RenderId, Args, Context) ->
 %%
 
 init([Supervisor, TeleviewId, RendererId, #{template := Template}=Args, Context]) ->
-    ?DEBUG(render_start),
-
     %% Get the differ pid from the supervisor. Note that this can't be done in the
     %% init, otherwise the supervisor will deadlock causing a timeout.
     self() ! {get_differ_pid, Supervisor},
