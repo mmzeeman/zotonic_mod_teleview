@@ -50,12 +50,26 @@ render(Params, Vars, Context) ->
             
             Id = z_ids:identifier(),
 
+            InsertTopic = <<"model/ui/insert/", Id/binary>>,
+            UpdateTopic = <<"model/ui/update/", Id/binary>>,
+
             ?DEBUG({notifier, PublishTopic}),
 
-            Subscribe = [<<"cotonic.broker.subscribe('bridge/origin/">>, PublishTopic, <<"/+type', function(m, a) { console.log('patch', a, m) } )">>], 
+            Subscribe = [<<"cotonic.broker.subscribe('bridge/origin/">>, PublishTopic, <<"/+type', function(m, a) { televiewState = updateDoc(a.type, m.payload, televiewState); if(televiewState.current) { cotonic.broker.publish('">>, UpdateTopic, <<"', televiewState.current) }; console.log(televiewState); } )">>], 
 
             Div = z_tags:render_tag(<<"div">>, [{<<"id">>, Id}], [ ]),
-            Script = z_tags:render_tag(<<"script">>, [], [<<"if (typeof cotonic === 'undefined')\n { window.addEventListener('cotonic-ready', function() {">>, Subscribe, <<} ") } else { ">>, Subscribe, <<" }">>]),
+
+            Script = z_tags:render_tag(<<"script">>, [], [
+                <<"let televiewState = newTeleviewState();">>, 
+
+
+                <<"if (typeof cotonic === 'undefined') { window.addEventListener('cotonic-ready', function() {">>,
+                    <<"cotonic.broker.publish('">>, InsertTopic, <<"', {initialData: '<p>Loading</p>', inner: true, priority: 10});">>,
+                    Subscribe,
+                <<"} ) } else { ">>,
+                    Subscribe,
+                <<"}">>
+            ]),
 
             {ok, [Div, Script]};
 

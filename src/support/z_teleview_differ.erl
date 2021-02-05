@@ -37,7 +37,10 @@
 
           processing=false,
 
-          topic,
+          kf_topic,
+          cp_topic,
+          ip_topic,
+
           context :: zotonic:context()
 }).
 
@@ -69,7 +72,17 @@ new_frame(Pid, NewFrame) ->
 
 init([MinTime, MaxTime, Topic, Context]) ->
     ?DEBUG(differ_start),
-    {ok, #state{min_time=MinTime, max_time=MaxTime, topic=Topic, context=Context}}.
+
+    KfTopic = <<Topic/binary, "/keyframe">>,
+    IpTopic = <<Topic/binary, "/incremental">>,
+    CpTopic = <<Topic/binary, "/cumulative">>,
+
+    {ok, #state{min_time=MinTime,
+                max_time=MaxTime,
+                kf_topic=KfTopic,
+                ip_topic=IpTopic,
+                cp_topic=CpTopic,
+                context=Context}}.
 
 %
 handle_call({new_frame, _Frame}, _From, #state{processing=true}=State) ->
@@ -122,14 +135,20 @@ code_change(_OldVsn, State, _Extra) ->
 %% helpers
 %%
 
-broadcast_patch({keyframe, Frame, Ts}, #state{topic=Topic, context=Context}) ->
-    ?DEBUG(z_mqtt:publish(Topic ++ [keyframe], [{frame, Frame}, {ts, Ts}], z_acl:sudo(Context)));
-broadcast_patch({incremental, Patch, Ts}, #state{topic=Topic, context=Context}) ->
+broadcast_patch({keyframe, Frame, Ts}, State) ->
+    ?DEBUG(z_mqtt:publish(State#state.kf_topic,
+                          [{frame, Frame}, {ts, Ts}],
+                          z_acl:sudo(State#state.context)));
+broadcast_patch({incremental, Patch, Ts}, State) ->
     List = patch_to_list(Patch, []),
-    ?DEBUG(z_mqtt:publish(Topic ++ [incremental], [{patch, List}, {ts, Ts}], z_acl:sudo(Context)));
-broadcast_patch({cumulative, Patch, Ts}, #state{topic=Topic, context=Context}) ->
+    ?DEBUG(z_mqtt:publish(State#state.ip_topic,
+                          [{patch, List}, {ts, Ts}],
+                          z_acl:sudo(State#state.context)));
+broadcast_patch({cumulative, Patch, Ts}, State) ->
     List = patch_to_list(Patch, []),
-    ?DEBUG(z_mqtt:publish(Topic ++ [cumulative], [{patch, List}, {ts, Ts}], z_acl:sudo(Context))).
+    ?DEBUG(z_mqtt:publish(State#state.cp_topic,
+                          [{patch, List}, {ts, Ts}],
+                          z_acl:sudo(State#state.context))).
 
 %% Calculate the next patch.
 next_patch(Frame, Current, Key, CurrentTime, LastTime, MinTime, infinite) ->
