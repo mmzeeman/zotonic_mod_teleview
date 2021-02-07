@@ -91,18 +91,12 @@ handle_call({start_renderer, Args, RenderContext}, _From,
             #state{renderers_supervisor=RenderersSup,
                    args=TeleviewArgs}=State) when is_pid(RenderersSup) ->
 
-    Args1 = case maps:is_key(<<"template">>, Args) of
-                true -> Args;
-                false -> Args#{template => maps:get(<<"template">>, TeleviewArgs)}
-            end,
-
-    RendererId = erlang:phash2(Args1),
+    RenderArgs = maps:merge(Args, TeleviewArgs),
+    RendererId = erlang:phash2(RenderArgs),
 
     PublishTopic = z_mqtt:flatten_topic([model, teleview, event, State#state.id, RendererId]),
 
-    ?DEBUG(PublishTopic),
-
-    case supervisor:start_child(RenderersSup, [RendererId, PublishTopic, Args1,
+    case supervisor:start_child(RenderersSup, [RendererId, PublishTopic, RenderArgs,
                                                z_context:prune_for_async(RenderContext)]) of
                     {ok, Pid} ->
                         _MonitorRef = erlang:monitor(process, Pid),
@@ -140,7 +134,7 @@ handle_info({start_renderers_supervisor, Sup, Id, Context}, State) ->
     {noreply, State#state{renderers_supervisor=Pid}};
 handle_info({mqtt_msg, Msg}, State) ->
     %% Trigger a render on all renderers.
-    trigger_render(State#state.id, Msg, State#state.renderers, State#state.context),
+    trigger_render(State#state.id, #{mqtt_msg => maps:without([publisher_context], Msg)}, State#state.renderers, State#state.context),
 
     {noreply, State};
 handle_info(Info, State) ->
@@ -157,16 +151,11 @@ code_change(_OldVsn, State, _Extra) ->
 %% Helpers
 %%
 
-trigger_render(TeleviewId, Msg, Renderers, Context) ->
-    ?DEBUG({trigger_render, Renderers}),
-
+trigger_render(TeleviewId, Args, Renderers, Context) ->
     maps:map(fun(RendererId, _RendererSup) ->
                      %% [TODO] What should be in the message?
-                     z_teleview_render:render(TeleviewId, RendererId, Msg, Context)
+                     z_teleview_render:render(TeleviewId, RendererId, Args, Context)
              end,
              Renderers),
-
-
     ok.
-
 

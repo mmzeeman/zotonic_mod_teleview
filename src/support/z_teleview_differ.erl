@@ -71,8 +71,6 @@ new_frame(Pid, NewFrame) ->
 %%
 
 init([MinTime, MaxTime, Topic, Context]) ->
-    ?DEBUG(differ_start),
-
     KfTopic = <<Topic/binary, "/keyframe">>,
     IpTopic = <<Topic/binary, "/incremental">>,
     CpTopic = <<Topic/binary, "/cumulative">>,
@@ -136,19 +134,19 @@ code_change(_OldVsn, State, _Extra) ->
 %%
 
 broadcast_patch({keyframe, Frame, Ts}, State) ->
-    ?DEBUG(z_mqtt:publish(State#state.kf_topic,
-                          [{frame, Frame}, {ts, Ts}],
-                          z_acl:sudo(State#state.context)));
+    z_mqtt:publish(State#state.kf_topic,
+                   [{frame, Frame}, {ts, Ts}],
+                   z_acl:sudo(State#state.context));
 broadcast_patch({incremental, Patch, Ts}, State) ->
     List = patch_to_list(Patch, []),
-    ?DEBUG(z_mqtt:publish(State#state.ip_topic,
-                          [{patch, List}, {ts, Ts}],
-                          z_acl:sudo(State#state.context)));
+    z_mqtt:publish(State#state.ip_topic,
+                   [{patch, List}, {ts, Ts}],
+                   z_acl:sudo(State#state.context));
 broadcast_patch({cumulative, Patch, Ts}, State) ->
     List = patch_to_list(Patch, []),
-    ?DEBUG(z_mqtt:publish(State#state.cp_topic,
-                          [{patch, List}, {ts, Ts}],
-                          z_acl:sudo(State#state.context))).
+    z_mqtt:publish(State#state.cp_topic,
+                   [{patch, List}, {ts, Ts}],
+                   z_acl:sudo(State#state.context)).
 
 %% Calculate the next patch.
 next_patch(Frame, Current, Key, CurrentTime, LastTime, MinTime, infinite) ->
