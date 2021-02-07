@@ -2,7 +2,7 @@
 %% @copyright 2019 Maas-Maarten Zeeman
 %% @doc Put a teleview on the page.
 
-%% Copyright 2019 Maas-Maarten Zeeman
+%% Copyright 2019-2021 Maas-Maarten Zeeman
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -30,30 +30,15 @@ vary(_Params, _Context) -> nocache.
 %% is going to manage the view.
 
 render(Params, Vars, Context) ->
-    ?DEBUG(teleview),
-    ?DEBUG({params, Params}),
-    ?DEBUG({args, Vars}),
-
     {type, Type} = proplists:lookup(type, Params),
     {args, Args} = proplists:lookup(args, Params),
 
     case z_notifier:first({ensure_teleview, Type, Args}, Context) of
         {ok, PublishTopic} ->
-            %% needed here. 
-            %%
-            %% 1. the topic to update the teleview.
-            %% 2. the current state of the teleview to show immediately
-            %% 3. Id for the div
-            %% 4. Code to initialize the client side of the teleview.
-            %%
-            %%
-            
             Id = z_ids:identifier(),
 
             InsertTopic = <<"model/ui/insert/", Id/binary>>,
             UpdateTopic = <<"model/ui/update/", Id/binary>>,
-
-            ?DEBUG({notifier, PublishTopic}),
 
             Subscribe = [<<"cotonic.broker.subscribe('bridge/origin/">>, PublishTopic, <<"/+type', function(m, a) { televiewState = updateDoc(a.type, m.payload, televiewState); if(televiewState.current) { cotonic.broker.publish('">>, UpdateTopic, <<"', televiewState.current) }; console.log(televiewState); } )">>], 
 
@@ -61,7 +46,6 @@ render(Params, Vars, Context) ->
 
             Script = z_tags:render_tag(<<"script">>, [], [
                 <<"let televiewState = newTeleviewState();">>, 
-
 
                 <<"if (typeof cotonic === 'undefined') { window.addEventListener('cotonic-ready', function() {">>,
                     <<"cotonic.broker.publish('">>, InsertTopic, <<"', {initialData: '<p>Loading</p>', inner: true, priority: 10});">>,
