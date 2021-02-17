@@ -34,21 +34,32 @@ render(Params, Vars, Context) ->
     {args, Args} = proplists:lookup(args, Params),
 
     case z_notifier:first({ensure_teleview, Type, Args}, Context) of
-        {ok, PublishTopic} ->
+        {ok, RenderState} ->
             Id = z_ids:identifier(),
 
             InsertTopic = <<"model/ui/insert/", Id/binary>>,
             UpdateTopic = <<"model/ui/update/", Id/binary>>,
 
-            Subscribe = [<<"cotonic.broker.subscribe('bridge/origin/">>, PublishTopic, <<"/+type', function(m, a) { televiewState = updateDoc(a.type, m.payload, televiewState); if(televiewState.current) { cotonic.broker.publish('">>, UpdateTopic, <<"', televiewState.current) }; console.log(televiewState); } )">>], 
+            CurrentFrame = maps:get(current_frame, RenderState, <<>>),
+            PublishTopic = maps:get(publish_topic, RenderState),
 
-            Div = z_tags:render_tag(<<"div">>, [{<<"id">>, Id}], [ ]),
+            JSArgs = case maps:get(min_time, RenderState, undefined) of
+                         0 ->
+                             Opts = maps:without([current_frame, current_frame_sn], RenderState),
+                             z_utils:js_object(maps:to_list(Opts), Context);
+                         _ ->
+                             z_utils:js_object(maps:to_list(RenderState), Context)
+                     end,
+
+            Subscribe = [<<"cotonic.broker.subscribe('bridge/origin/">>, PublishTopic, <<"/+type', function(m, a) { televiewState = updateDoc(a.type, m.payload, televiewState); if(televiewState.current_frame) { cotonic.broker.publish('">>, UpdateTopic, <<"', televiewState.current_frame) }; } )">>], 
+
+            Div = z_tags:render_tag(<<"div">>, [{<<"id">>, Id}], [ CurrentFrame ]),
 
             Script = z_tags:render_tag(<<"script">>, [], [
-                <<"let televiewState = newTeleviewState();">>, 
+                <<"let televiewState = newTeleviewState(">>, JSArgs, <<");">>, 
 
                 <<"if (typeof cotonic === 'undefined') { window.addEventListener('cotonic-ready', function() {">>,
-                    <<"cotonic.broker.publish('">>, InsertTopic, <<"', {initialData: '<p>Loading</p>', inner: true, priority: 10});">>,
+                    <<"cotonic.broker.publish('">>, InsertTopic, <<"', {initialData: undefined, inner: true, priority: 10});">>,
                     Subscribe,
                 <<"} ) } else { ">>,
                     Subscribe,

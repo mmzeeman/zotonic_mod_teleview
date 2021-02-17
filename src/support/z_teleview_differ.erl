@@ -21,34 +21,42 @@
 
 -behaviour(gen_server).
 
+-define(DEFAULT_MIN_TIME, 0).
+-define(DEFAULT_MAX_TIME, infinite).
+
 %% Generates diffs to update remote views with a minimum use of bandwith.
 
 -record(state, {
-          keyframe,
-          current_frame,
-          last_time=0,
+          keyframe :: undefined | binary(),
+          keyframe_sn = 0 :: non_neg_integer(),
+          last_time = 0 :: integer(),
 
-          new_frame,
+          current_frame :: undefined | binary(),
+          current_frame_sn = 0 :: non_neg_integer(),
 
-          min_time=10000 :: pos_integer(), 
-          max_time=60000 :: pos_integer() | infinite,  % integer in ms | infinite
+          new_frame :: undefined | binary(), % The frame which will be processed. 
+          processing = false :: boolean(),
 
-          mfa=undefined,
+          min_time=?DEFAULT_MIN_TIME :: non_neg_integer(),        % minimum time between keyframes. 
+          max_time=?DEFAULT_MAX_TIME :: pos_integer() | infinite, % integer in ms | infinite
 
-          processing=false,
+          publish_topic,
 
-          kf_topic,
-          cp_topic,
-          ip_topic,
+          keyframe_topic,
+          cumulative_patch_topic,
+          incremental_patch_topic,
 
           context :: zotonic:context()
 }).
 
 %% api
 -export([
-    start_link/4,
-    new_frame/2
+    start_link/5,
+    new_frame/2,
+
+    state/3
 ]).
+
 
 
 -include_lib("zotonic_core/include/zotonic.hrl").
@@ -60,26 +68,35 @@
 %% Api
 %% 
 
-start_link(MinTime, MaxTime, Topic, Context) ->
-    gen_server:start_link(?MODULE, [MinTime, MaxTime, Topic, Context], []).
-
+start_link(TeleviewId, RendererId, PublishTopic, Args, Context) -> 
+    gen_server:start_link({via, z_proc, {{?MODULE, TeleviewId, RendererId}, Context}},
+                          ?MODULE,
+                          [PublishTopic, Args, Context], []).
+  
 new_frame(Pid, NewFrame) ->
     gen_server:call(Pid, {new_frame, NewFrame}).
+
+
+state(TeleviewId, RendererId, Context) ->
+    gen_server:call({via, z_proc, {{?MODULE, TeleviewId, RendererId}, Context}},
+                    state).
+
 
 %%
 %% gen_server callbacks
 %%
 
-init([MinTime, MaxTime, Topic, Context]) ->
+init([Topic, Args, Context]) ->
     KfTopic = <<Topic/binary, "/keyframe">>,
     IpTopic = <<Topic/binary, "/incremental">>,
     CpTopic = <<Topic/binary, "/cumulative">>,
 
-    {ok, #state{min_time=MinTime,
-                max_time=MaxTime,
-                kf_topic=KfTopic,
-                ip_topic=IpTopic,
-                cp_topic=CpTopic,
+    {ok, #state{min_time=maps:get(differ_min_time, Args, ?DEFAULT_MIN_TIME),
+                max_time=maps:get(differ_max_time, Args, ?DEFAULT_MAX_TIME),
+                publish_topic=Topic,
+                keyframe_topic=KfTopic,
+                incremental_patch_topic=IpTopic,
+                cumulative_patch_topic=CpTopic,
                 context=Context}}.
 
 %
@@ -89,6 +106,18 @@ handle_call({new_frame, _Frame}, _From, #state{processing=true}=State) ->
 handle_call({new_frame, Frame}, _From, #state{processing=false}=State) ->
     self() ! next_patch,
     {reply, ok, State#state{new_frame=Frame, processing=true}};
+
+handle_call(state, _From, State) ->
+    DifferState = #{keyframe => State#state.keyframe,
+                    keyframe_sn => State#state.keyframe_sn,
+                    current_frame => State#state.current_frame,
+                    current_frame_sn => State#state.current_frame_sn,
+                    min_time => State#state.min_time,
+                    max_time => State#state.max_time,
+                    publish_topic =>State#state.publish_topic
+                   },
+
+    {reply, DifferState, State};
 
 handle_call(keyframe, _From, State) ->
     {reply, State#state.keyframe, State};
@@ -101,25 +130,12 @@ handle_cast(Msg, State) ->
     {stop, {unknown_cast, Msg}, State}.
 
 %
-handle_info(next_patch, #state{processing=true,
-                               new_frame=Frame,
-                               keyframe=Key,
-                               current_frame=Current,
-                               last_time=LastTime}=State) ->
-    Patch = next_patch(Frame, Current, Key, current_time(), LastTime, State#state.min_time, State#state.max_time),
-    broadcast_patch(Patch, State),
-    case Patch of
-        {keyframe, _, CurrentTime} ->
-            {noreply, State#state{
-                        keyframe=Frame,
-                        current_frame=Frame,
-                        last_time=CurrentTime,
-                        processing=false}};
-        _ ->
-            {noreply, State#state{
-                        current_frame=Frame,
-                        processing=false}}
-    end;
+handle_info(next_patch, #state{processing=true, new_frame=Frame}=State) ->
+    {Patch, State1} = next_patch(Frame, State),
+    broadcast_patch(Patch, State1),
+    z_utils:flush_message(next_patch),
+    {noreply, State1#state{processing=false, new_frame=undefined}};
+
 handle_info(_Info, State) ->
     {noreply, State}.
 
@@ -133,63 +149,111 @@ code_change(_OldVsn, State, _Extra) ->
 %% helpers
 %%
 
-broadcast_patch({keyframe, Frame, Ts}, State) ->
-    z_mqtt:publish(State#state.kf_topic,
-                   [{frame, Frame}, {ts, Ts}],
-                   z_acl:sudo(State#state.context));
-broadcast_patch({incremental, Patch, Ts}, State) ->
-    List = patch_to_list(Patch, []),
-    z_mqtt:publish(State#state.ip_topic,
-                   [{patch, List}, {ts, Ts}],
-                   z_acl:sudo(State#state.context));
-broadcast_patch({cumulative, Patch, Ts}, State) ->
-    List = patch_to_list(Patch, []),
-    z_mqtt:publish(State#state.cp_topic,
-                   [{patch, List}, {ts, Ts}],
-                   z_acl:sudo(State#state.context)).
+broadcast_patch({keyframe, Msg}, State) ->
+    z_mqtt:publish(State#state.keyframe_topic, Msg, z_acl:sudo(State#state.context));
+broadcast_patch({incremental, Msg}, State) ->
+    z_mqtt:publish(State#state.incremental_patch_topic, Msg, z_acl:sudo(State#state.context));
+broadcast_patch({cumulative, Msg}, State) ->
+    z_mqtt:publish(State#state.cumulative_patch_topic, Msg, z_acl:sudo(State#state.context)).
 
-%% Calculate the next patch.
-next_patch(Frame, Current, Key, CurrentTime, LastTime, MinTime, infinite) ->
-    DeltaTime = CurrentTime - LastTime,
-    next_patch_1(Frame, Current, Key, CurrentTime, DeltaTime, MinTime);
-next_patch(Frame, Current, Key, CurrentTime, LastTime, MinTime, MaxTime) ->
-    DeltaTime = CurrentTime - LastTime,
-
-    case DeltaTime > MaxTime of
+%% Create the next patch
+%%
+next_patch(NewFrame, #state{keyframe=undefined}=State) ->
+    State1 = update_state_keyframe(NewFrame, current_time(), State),
+    {{keyframe, #{ frame => NewFrame, keyframe_sn => State1#state.keyframe_sn}}, State1};
+next_patch(NewFrame, #state{max_time=infinite}=State) ->
+    do_patch(NewFrame, State);
+next_patch(NewFrame, #state{max_time=MaxTime}=State) ->
+    CurrentTime = current_time(),
+    case (CurrentTime - State#state.last_time) > MaxTime of
         true ->
-            {keyframe, Frame, CurrentTime};
+            State1 = update_state_keyframe(NewFrame, CurrentTime, State),
+            {{keyframe, #{ frame => NewFrame, keyframe_sn => State1#state.keyframe_sn }}, State1 };
         false ->
-            next_patch_1(Frame, Current, Key, CurrentTime, DeltaTime, MinTime)
+            do_patch(NewFrame, State)
     end.
 
-next_patch_1(Frame, Current, Key, CurrentTime, DeltaTime, MinTime) ->
-    CumulativePatch = make_patch(Key, Frame),
-    case complexity(CumulativePatch, Frame) of
-        too_high ->
-            case DeltaTime > MinTime of
-                true ->
-                    {keyframe, Frame, CurrentTime};
-                false ->
-                    IncrementalPatch = make_patch(Current, Frame),
-                    {incremental, IncrementalPatch, CurrentTime}
-            end;
-        _ ->
-            {cumulative, CumulativePatch, CurrentTime}
+%% Make a patch against the current keyframe, and check for complexity.
+%%
+do_patch(NewFrame, #state{keyframe=KeyFrame}=State) ->
+    Patch = make_patch(KeyFrame, NewFrame),
+
+    case is_complexity_too_high(Patch, NewFrame) of
+        true ->
+            %% Now we either create a new keyframe update,
+            %% or an incremental patch. Depending on the situation
+            do_complex_patch(NewFrame, State);
+        false ->
+            do_cumulative_patch(NewFrame, Patch, State)
     end.
 
+%% Create a cumulative patch
+%%
+do_cumulative_patch(NewFrame, Patch, #state{min_time=0}=State) ->
+    %% When min_time == 0 there are no incremental frames, so the current_frame_sn is not added to the patch.
+    State1 = update_state(NewFrame, State),
+    {{cumulative, #{patch => patch_to_list(Patch, []),
+                    keyframe_sn => State#state.keyframe_sn}},
+     State1};
+do_cumulative_patch(NewFrame, Patch, #state{}=State) ->
+    %% In this case it is possible that the viewers get incremental updates. The current_frame_sn
+    %% must be included too.
+    State1 = update_state(NewFrame, State),
+    {{cumulative, #{ patch => patch_to_list(Patch, []),
+                     keyframe_sn => State#state.keyframe_sn,
+                     current_frame_sn => State#state.current_frame_sn }},
+     State1}.
+
+%% Create either a keyframe, or an incremental patch, depending
+%% on the passed minimum time.
+%%
+do_complex_patch(NewFrame, #state{min_time=0}=State) ->
+    %% Keep it simple, just make a new keyframe
+    State1 = update_state_keyframe(NewFrame, current_time(), State),
+    {{keyframe, #{frame => NewFrame, keyframe_sn => State1#state.keyframe_sn}}, State1};
+do_complex_patch(NewFrame, #state{}=State) ->
+    CurrentTime = current_time(),
+
+    case (CurrentTime - State#state.last_time) > State#state.min_time of
+        true ->
+            %% The last keyframe was too long ago, just send one.
+            State1 = update_state_keyframe(NewFrame, CurrentTime, State),
+            {{keyframe, #{frame => NewFrame, keyframe_sn => State1#state.keyframe_sn}}, State1};
+        false ->
+            %% Make a patch against the current_frame. (Assumes this patch is smaller)
+            Patch = make_patch(State#state.current_frame, NewFrame),
+            State1 = update_state(NewFrame, State),
+            {{incremental, #{ patch => patch_to_list(Patch, []),
+                              keyframe_sn => State#state.keyframe_sn,
+                              current_frame_sn => State#state.current_frame_sn }},
+             State1}
+    end.
+
+
+%% Update the state when a keyframe is produced.
+update_state_keyframe(NewFrame, CurrentTime, State) ->
+    FrameSN = State#state.current_frame_sn + 1,
+    State#state{keyframe = NewFrame, keyframe_sn = FrameSN,
+                current_frame = NewFrame, current_frame_sn = FrameSN,
+                last_time = CurrentTime
+               }.
+
+%% Update the state when a cumulative or incremental patch is produced.
+update_state(NewFrame, State) ->
+    State#state{
+      current_frame = NewFrame,
+      current_frame_sn = State#state.current_frame_sn + 1
+     }.
 
 make_patch(SourceText, DestinationText) ->
     Diffs = diffy:diff(SourceText, DestinationText),
     CleanedDiffs = diffy:cleanup_efficiency(Diffs),
     diffy_simple_patch:make_patch(CleanedDiffs).
 
-complexity(Diffs, Doc) ->
+is_complexity_too_high(Diffs, Doc) ->
     Size = size(Doc),
     EstimatedSize = estimate_size(Diffs),
-    case EstimatedSize > Size of
-        true -> too_high;
-        false -> ok
-    end.
+    EstimatedSize > Size.
 
 estimate_size(Diffs) ->
     estimate_size(Diffs, 0).
@@ -223,43 +287,3 @@ patch_to_list([{skip, N} | Rest], Acc) ->
 patch_to_list([{insert, Bin} | Rest], Acc) ->
     patch_to_list(Rest, [Bin, i | Acc]).
 
-
-%%
-%% Tests
-%%
-
--ifdef(TEST).
--include_lib("eunit/include/eunit.hrl").
-
-estimate_size_test() ->
-    ?assertEqual(estimate_size([]), 0),
-    ?assertEqual(8, estimate_size([{skip, 1000}])),
-    ?assertEqual(5, estimate_size([{skip, 1}])),
-    ?assertEqual(8, estimate_size([{insert, <<"toot">>}])),
-
-    ok.
-
-
-next_frame_test() ->
-    P1 = next_patch(<<"jungle">>, <<"jungle">>, <<"jungle">>, 100, 0, 10, 2000),
-    ?assertEqual({cumulative, [], 100}, P1),
-
-    P2 = next_patch(<<"jungle">>, <<"jungle">>, <<"jungle">>, 2001, 0, 10, 2000),
-    ?assertEqual({keyframe, <<"jungle">>, 2001}, P2),
-
-    %% Infinite maxtime
-    P3 = next_patch(<<"jungle">>, <<"jungle">>, <<"jungle">>, 2001, 0, 10, infinite),
-    ?assertEqual({cumulative, [], 2001}, P3),
-
-    ok.
-
-make_patch_test() ->
-    P1 = make_patch(<<"jungle">>, <<"jungle">>),
-    ?assertEqual([], P1),
-
-    P2 = make_patch(<<"aab">>, <<"aabb">>),
-    ?assertEqual([{copy,4},{skip,1}], P2),
-
-    ok.
-
--endif.

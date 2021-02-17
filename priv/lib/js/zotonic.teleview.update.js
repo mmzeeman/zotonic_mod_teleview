@@ -1,46 +1,72 @@
 
 
-function newTeleviewState() {
+function newTeleviewState(state) {
     return {
-        keydoc: undefined,
-        keydoc_ts: undefined,
+        keyframe: state.keyframe,
+        keyframe_sn: state.keyframe_sn,
 
-        current: undefined,
-        current_ts: undefined
+        current_frame: state.current_frame,
+        current_frame_sn: state.current_frame_sn,
+
+        max_time: state.max_time,
+        min_time: state.min_time,
+
+        publish_topic: state.publish_topic
     };
 }
 
 function updateDoc(type, update, state) {
     // Note: a timestamp should be used to check if the update can
     // be applied to the current state. This is skipped right now.
+    //
 
-    console.log(type, update, state);
+    console.log(type);
     
     switch(type) {
         case "keyframe":
-            state.keydoc = state.current = update.frame;
-            state.keydoc_ts = state.current_ts = update.ts;
+            if(update.keyframe_sn > state.keyframe_sn) {
+                state.keyframe = state.current_frame = update.frame;
+                state.keyframe_sn = state.current_frame_sn = update.keyframe_sn;
+
+                console.log("New keyframe", state.keyframe_sn);
+            } else {
+                console.log("Keyframe is not an update");
+            }
             break;
         case "incremental": // Patch against the current doc.
-            if(!state.current) {
-                console.log("waiting for current");
+            if(!state.current_frame) {
+                console.log("waiting for current frame");
             } else {
-                state.current = applyPatch(state.current, update.patch);
-                state.current_ts = update.ts
+                if(state.current_frame_sn === update.current_frame_sn) {
+                    state.current_frame = applyPatch(state.current_frame, update.patch);
+                    state.current_frame_sn = update.current_frame_sn;
+
+                    console.log("New current_frame", state.keyframe_sn);
+                } else {
+                    console.log("Incremental patch does not match sn");
+                }
             }
 
             break;
-        case "cumulative": // Patch against the keydoc
-            if(!state.keydoc) {
-                console.log("waiting for keydoc");
+        case "cumulative": // Patch against the keyframe
+            if(!state.keyframe) {
+                console.log("waiting for keyframe");
             } else {
-                state.current = applyPatch(state.keydoc, update.patch);
-                state.current_ts = update.ts;
+                if(state.keyframe_sn === update.keyframe_sn) {
+                    state.current_frame = applyPatch(state.keyframe, update.patch);
+                    
+                    // Update the current frame sn when it is available. 
+                    state.current_frame_sn = update.current_frame_sn;
+
+                    console.log("New current_frame", update.patch, state.current_frame, state.keyframe_sn);
+                } else {
+                    console.log("Cumulative patch does not match sn");
+                }
             }
 
             break;
         default:
-            throw Error("unexpected update", type);
+            throw Error("Unexpected update", type);
     }
 
     return state;
@@ -50,7 +76,7 @@ function applyPatch(source, patches) {
     if(patches.length === 0)
         return source;
 
-    const src = source; //encoder.encode(source);
+    const src = source;
     const dst = [];
 
     let idx = 0;
@@ -61,8 +87,6 @@ function applyPatch(source, patches) {
         switch(patch) {
             case "c": // copy
                 const slice = src.slice(idx, idx+v);
-
-                // dst.push(decoder.decode(slice));
                 dst.push(slice);
 
                 idx += v;

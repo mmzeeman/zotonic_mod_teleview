@@ -26,9 +26,6 @@
 
 -export([publish_event/2]).
 
--define(MIN_TIME, 10000).
--define(MAX_TIME, 60000).
-
 -include_lib("zotonic_core/include/zotonic.hrl").
 
 %%
@@ -52,14 +49,15 @@ init([TeleviewId, RendererId, Topic, Args, Context]) ->
 
     DifferSpec = #{id => z_teleview_differ,
                    start => {z_teleview_differ, start_link,
-                             [?MIN_TIME, ?MAX_TIME, Topic, Context]},
+                             [TeleviewId, RendererId, Topic, Args, Context]},
                    restart => transient,
                    shutdown => 1000,
                    type => worker,
                    modules => [z_teleview_differ]},
 
     RenderSpec = #{id => z_teleview_render,
-                   start => {z_teleview_render, start_link, [TeleviewId, RendererId, self(), Args, Context]},
+                   start => {z_teleview_render, start_link,
+                             [TeleviewId, RendererId, self(), Args, Context]},
                    restart => transient,
                    shutdown => 1000,
                    type => worker,

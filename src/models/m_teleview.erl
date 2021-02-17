@@ -30,8 +30,15 @@
 
 %% @doc ...
 
-m_get([topics, Label | Rest], _Msg, Context) ->
-    {ok, {get_topics(Label, Context), Rest}};
+m_get([TeleviewId, RendererId, keyframe | Rest], _Msg, Context) ->
+    {ok, {todo, Rest}};
+
+m_get([TeleviewId, RendererId, current | Rest], _Msg, Context) ->
+    {ok, {todo, Rest}};
+
+m_get([TeleviewId, topics, Label | Rest], _Msg, Context) ->
+    {ok, {todo, Rest}};
+
 m_get(V, _Msg, _Context) ->
     lager:info("Unknown ~p lookup: ~p", [?MODULE, V]),
     {error, unknown_path}.

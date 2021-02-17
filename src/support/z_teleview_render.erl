@@ -27,6 +27,7 @@
 % api
 -export([
     start_link/5,
+
     render/3,
     render/4
 ]).
@@ -54,7 +55,6 @@ start_link(TeleviewId, RendererId, SupervisorPid, Args, Context) ->
                           ?MODULE,
                           [SupervisorPid, TeleviewId, RendererId, Args, Context], []).
 
-
 % render without arguments
 render(TeleviewId, RenderId, Context) ->
     gen_server:call({via, z_proc, {{?MODULE, TeleviewId, RenderId}, Context}}, render).
@@ -68,7 +68,6 @@ render(TeleviewId, RenderId, Args, Context) ->
 %%
 
 init([Supervisor, TeleviewId, RendererId, #{<<"template">> := Template}=Args, Context]) ->
-    %% Get the differ pid from the supervisor. Note that this can't be done in the
     %% init, otherwise the supervisor will deadlock causing a timeout.
     self() ! {get_differ_pid, Supervisor},
 
@@ -145,3 +144,4 @@ merge_args(Args, RenderArgs) when is_map(Args) andalso is_map(RenderArgs) ->
     maps:merge(Args, RenderArgs);
 merge_args(Args, RenderArgs) when is_list(Args) andalso is_list(RenderArgs) ->
     z_utils:props_merge(Args, RenderArgs).
+
