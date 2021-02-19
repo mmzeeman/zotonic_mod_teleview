@@ -233,8 +233,10 @@ do_complex_patch(NewFrame, #state{}=State) ->
 %% Update the state when a keyframe is produced.
 update_state_keyframe(NewFrame, CurrentTime, State) ->
     FrameSN = State#state.current_frame_sn + 1,
-    State#state{keyframe = NewFrame, keyframe_sn = FrameSN,
-                current_frame = NewFrame, current_frame_sn = FrameSN,
+    State#state{keyframe = NewFrame,
+                keyframe_sn = FrameSN,
+                current_frame = NewFrame,
+                current_frame_sn = FrameSN,
                 last_time = CurrentTime
                }.
 

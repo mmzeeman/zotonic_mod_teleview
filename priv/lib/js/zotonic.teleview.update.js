@@ -16,12 +16,6 @@ function newTeleviewState(state) {
 }
 
 function updateDoc(type, update, state) {
-    // Note: a timestamp should be used to check if the update can
-    // be applied to the current state. This is skipped right now.
-    //
-
-    console.log(type);
-    
     switch(type) {
         case "keyframe":
             if(update.keyframe_sn > state.keyframe_sn) {
@@ -56,9 +50,9 @@ function updateDoc(type, update, state) {
                     state.current_frame = applyPatch(state.keyframe, update.patch);
                     
                     // Update the current frame sn when it is available. 
-                    state.current_frame_sn = update.current_frame_sn;
-
-                    console.log("New current_frame", update.patch, state.current_frame, state.keyframe_sn);
+                    if(update.current_frame_sn !== undefined) {
+                        state.current_frame_sn = update.current_frame_sn;
+                    }
                 } else {
                     console.log("Cumulative patch does not match sn");
                 }
@@ -80,6 +74,7 @@ function applyPatch(source, patches) {
     const dst = [];
 
     let idx = 0;
+
     for(let i=0, l=patches.length; i < l; i += 2) {
         let patch = patches[i];
         let v = patches[i+1];
@@ -88,7 +83,6 @@ function applyPatch(source, patches) {
             case "c": // copy
                 const slice = src.slice(idx, idx+v);
                 dst.push(slice);
-
                 idx += v;
                 break;
             case "s": // skip
