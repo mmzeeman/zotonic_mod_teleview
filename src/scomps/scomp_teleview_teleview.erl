@@ -37,33 +37,26 @@ render(Params, Vars, Context) ->
         {ok, RenderState} ->
             Id = z_ids:identifier(),
 
-            InsertTopic = <<"model/ui/insert/", Id/binary>>,
-            UpdateTopic = <<"model/ui/update/", Id/binary>>,
+            RenderState1 = maps:put(uiId, Id, RenderState),
 
-            CurrentFrame = maps:get(current_frame, RenderState, <<>>),
-            PublishTopic = maps:get(publish_topic, RenderState),
+            CurrentFrame = maps:get(current_frame, RenderState1, <<>>),
+            PublishTopic = maps:get(publish_topic, RenderState1),
 
-            JSArgs = case maps:get(min_time, RenderState, undefined) of
+            JSArgs = case maps:get(min_time, RenderState1, undefined) of
                          0 ->
-                             Opts = maps:without([current_frame, current_frame_sn], RenderState),
+                             Opts = maps:without([current_frame, current_frame_sn], RenderState1),
                              z_utils:js_object(maps:to_list(Opts), Context);
                          _ ->
-                             z_utils:js_object(maps:to_list(RenderState), Context)
+                             z_utils:js_object(maps:to_list(RenderState1), Context)
                      end,
 
-            Subscribe = [<<"cotonic.broker.subscribe('bridge/origin/">>, PublishTopic, <<"/+type', function(m, a) { televiewState = updateDoc(a.type, m.payload, televiewState); if(televiewState.current_frame) { cotonic.broker.publish('">>, UpdateTopic, <<"', televiewState.current_frame) }; } )">>], 
-
             Div = z_tags:render_tag(<<"div">>, [{<<"id">>, Id}], [ CurrentFrame ]),
+            % Div = z_tags:render_tag(<<"div">>, [{<<"id">>, Id}], [ ]),
 
             Script = z_tags:render_tag(<<"script">>, [], [
-                <<"let televiewState = newTeleviewState(">>, JSArgs, <<");">>, 
-
-                <<"if (typeof cotonic === 'undefined') { window.addEventListener('cotonic-ready', function() {">>,
-                    <<"cotonic.broker.publish('">>, InsertTopic, <<"', {initialData: undefined, inner: true, priority: 10});">>,
-                    Subscribe,
-                <<"} ) } else { ">>,
-                    Subscribe,
-                <<"}">>
+                <<"cotonic.ready.then(function() {">>,
+                    <<"initTeleviewer(">>, JSArgs, <<");">>, 
+                <<"} );">>
             ]),
 
             {ok, [Div, Script]};

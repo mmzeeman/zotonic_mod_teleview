@@ -24,6 +24,8 @@
 -define(DEFAULT_MIN_TIME, 0).
 -define(DEFAULT_MAX_TIME, infinite).
 
+-define(PATCH_OVERHEAD, 15).
+
 %% Generates diffs to update remote views with a minimum use of bandwith.
 
 -record(state, {
@@ -104,8 +106,13 @@ handle_call({new_frame, _Frame}, _From, #state{processing=true}=State) ->
     % Notify the caller that the differ is processing.
     {reply, busy, State};
 handle_call({new_frame, Frame}, _From, #state{processing=false}=State) ->
-    self() ! next_patch,
-    {reply, ok, State#state{new_frame=Frame, processing=true}};
+    case Frame =/= State#state.current_frame of
+        true ->
+            self() ! next_patch,
+            {reply, ok, State#state{new_frame=Frame, processing=true}};
+        false ->
+            {reply, ok, State}
+    end;
 
 handle_call(state, _From, State) ->
     DifferState = #{keyframe => State#state.keyframe,
@@ -192,16 +199,20 @@ do_patch(NewFrame, #state{keyframe=KeyFrame}=State) ->
 do_cumulative_patch(NewFrame, Patch, #state{min_time=0}=State) ->
     %% When min_time == 0 there are no incremental frames, so the current_frame_sn is not added to the patch.
     State1 = update_state(NewFrame, State),
-    {{cumulative, #{patch => patch_to_list(Patch, []),
-                    keyframe_sn => State#state.keyframe_sn}},
+    {{cumulative, #{patch => patch_to_list(Patch),
+                    keyframe_sn => State#state.keyframe_sn,
+                    result_size => size(NewFrame)
+                   }},
      State1};
 do_cumulative_patch(NewFrame, Patch, #state{}=State) ->
     %% In this case it is possible that the viewers get incremental updates. The current_frame_sn
     %% must be included too.
     State1 = update_state(NewFrame, State),
-    {{cumulative, #{ patch => patch_to_list(Patch, []),
+    {{cumulative, #{ patch => patch_to_list(Patch),
                      keyframe_sn => State#state.keyframe_sn,
-                     current_frame_sn => State#state.current_frame_sn }},
+                     current_frame_sn => State#state.current_frame_sn,
+                     result_size => size(NewFrame)
+                   }},
      State1}.
 
 %% Create either a keyframe, or an incremental patch, depending
@@ -223,9 +234,11 @@ do_complex_patch(NewFrame, #state{}=State) ->
             %% Make a patch against the current_frame. (Assumes this patch is smaller)
             Patch = make_patch(State#state.current_frame, NewFrame),
             State1 = update_state(NewFrame, State),
-            {{incremental, #{ patch => patch_to_list(Patch, []),
+            {{incremental, #{ patch => patch_to_list(Patch),
                               keyframe_sn => State#state.keyframe_sn,
-                              current_frame_sn => State#state.current_frame_sn }},
+                              current_frame_sn => State#state.current_frame_sn,
+                              result_size => size(NewFrame)
+                            }},
              State1}
     end.
 
@@ -252,10 +265,11 @@ make_patch(SourceText, DestinationText) ->
     CleanedDiffs = diffy:cleanup_efficiency(Diffs),
     diffy_simple_patch:make_patch(CleanedDiffs).
 
+
 is_complexity_too_high(Diffs, Doc) ->
     Size = size(Doc),
     EstimatedSize = estimate_size(Diffs),
-    EstimatedSize > Size.
+    ?PATCH_OVERHEAD + (EstimatedSize * 2) > Size.
 
 estimate_size(Diffs) ->
     estimate_size(Diffs, 0).
@@ -279,6 +293,8 @@ estimate_size_element(B) when is_binary(B) -> size(B).
 current_time() ->
     erlang:system_time(millisecond).
 
+patch_to_list(Patch) ->
+    patch_to_list(Patch, []).
     
 patch_to_list([], Acc) ->
     lists:reverse(Acc);
