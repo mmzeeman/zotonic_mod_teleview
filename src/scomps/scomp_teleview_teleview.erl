@@ -51,12 +51,11 @@ render(Params, Vars, Context) ->
                      end,
 
             Div = z_tags:render_tag(<<"div">>, [{<<"id">>, Id}], [ CurrentFrame ]),
-            % Div = z_tags:render_tag(<<"div">>, [{<<"id">>, Id}], [ ]),
 
             Script = z_tags:render_tag(<<"script">>, [], [
                 <<"cotonic.ready.then(function() {">>,
                     <<"initTeleviewer(">>, JSArgs, <<");">>, 
-                <<"} );">>
+                <<"});">>
             ]),
 
             {ok, [Div, Script]};

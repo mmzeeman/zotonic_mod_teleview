@@ -23,8 +23,6 @@
 % api
 -export([
     start_link/4,
-    get_topics/2,
-
     start_renderer/3
 ]).
 
@@ -50,16 +48,6 @@ start_link(Id, Supervisor, Args, Context) ->
       {via, z_proc, {{?MODULE, Id}, Context}}, ?MODULE, [Id, Supervisor, Args, Context], []).
 
 
-% @doc Return the render topic which can be used for this context.
-get_topics(Id, Context) ->
-    case z_proc:whereis({?MODULE, Id}, Context) of
-        Pid when is_pid(Pid) ->
-            gen_server:call(get_topics, Pid);
-        undefined ->
-            %% This is an unknown renderer, there is no event topic.
-            undefined
-    end.
-
 % @doc Start a renderer.
 start_renderer(TeleviewId, Args, Context) ->
     gen_server:call({via, z_proc, {{?MODULE, TeleviewId}, Context}},
@@ -76,7 +64,6 @@ init([Id, Supervisor, #{ <<"topic">> := Topic }=Args, Context]) ->
     %% Subscribe to event topic.
     case z_mqtt:subscribe(Topic, Context) of
         ok ->
-            ?DEBUG({subscribed, Topic}),
             ok;
         {error, _}=Error ->
             % log warning
@@ -101,8 +88,11 @@ handle_call({start_renderer, Args, RenderContext}, _From,
     case supervisor:start_child(RenderersSup, [RendererId, PublishTopic, RenderArgs,
                                                z_context:prune_for_async(RenderContext)]) of
         {ok, Pid} ->
-            _MonitorRef = erlang:monitor(process, Pid),
-            Renderers1 = maps:put(RendererId, Pid, State#state.renderers),
+            MonitorRef = erlang:monitor(process, Pid),
+
+            Renderers1 = maps:put(Pid, #{ renderer_id => RendererId,
+                                          monitor_ref => MonitorRef }, State#state.renderers),
+
             RendererState = #{publish_topic => PublishTopic},
             {reply, {ok, RendererState}, State#state{renderers=Renderers1}};
         {error, {already_started, _Pid}} ->
@@ -134,9 +124,20 @@ handle_info({start_renderers_supervisor, Sup, Id, Context}, State) ->
     link(Pid),
 
     {noreply, State#state{renderers_supervisor=Pid}};
+
+handle_info({'DOWN', _MonitorRef, process, Pid, _Info}, State) ->
+    %% A renderer died.
+
+    ?DEBUG({todo, handle_renderer_down, Pid}),
+
+    {noreply, State};
+
 handle_info({mqtt_msg, Msg}, State) ->
     %% Trigger a render on all renderers.
-    trigger_render(State#state.id, #{mqtt_msg => maps:without([publisher_context], Msg)}, State#state.renderers, State#state.context),
+    trigger_render(State#state.id,
+                   State#state.renderers,
+                   #{mqtt_msg => maps:without([publisher_context], Msg)},
+                   State#state.context),
 
     {noreply, State};
 handle_info(Info, State) ->
@@ -153,8 +154,8 @@ code_change(_OldVsn, State, _Extra) ->
 %% Helpers
 %%
 
-trigger_render(TeleviewId, Args, Renderers, Context) ->
-    maps:map(fun(RendererId, _RendererSup) ->
+trigger_render(TeleviewId, Renderers, Args, Context) ->
+    maps:map(fun(_RendererSupPid, #{renderer_id := RendererId}) ->
                      z_teleview_render:render(TeleviewId, RendererId, Args, Context)
              end,
              Renderers),

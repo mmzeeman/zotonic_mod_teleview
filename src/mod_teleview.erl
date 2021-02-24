@@ -33,7 +33,10 @@
 -export([init/1]).
 
 -export([
-    start_teleview/2
+    start_teleview/2,
+    start_renderer/3,
+    render/3,
+    render/4
 ]).
 
 -define(SERVER, ?MODULE).
@@ -61,10 +64,26 @@ start_teleview(Id, #{ <<"template">> := _Template } = Args, Context) ->
             Error
     end.
 
+
+% @doc Start a new renderer belonging to a teleview. The passed args and context are
+% used for rendering.
+start_renderer(TeleviewId, Args, Context) ->
+    z_teleview_state:start_renderer(TeleviewId, Args, Context).
+
+% @doc Trigger a render of a specific renderer of a teleview.
+render(TeleviewId, RendererId, Context) -> 
+    z_teleview_render:render(TeleviewId, RendererId, Context).
+
+% @doc Trigger a render, with args, of a specific renderer of a teleview.
+render(TeleviewId, RendererId, Args, Context) -> 
+    z_teleview_render:render(TeleviewId, RendererId, Args, Context).
+
+
+
+
 %%
 %% Supervisor callback
 %%
-
 
 init(Args) ->
     {context, Context} = proplists:lookup(context, Args),

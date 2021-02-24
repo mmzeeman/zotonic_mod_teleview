@@ -24,8 +24,6 @@
 -export([start_link/5]).
 -export([init/1]).
 
--export([publish_event/2]).
-
 -include_lib("zotonic_core/include/zotonic.hrl").
 
 %%
@@ -33,8 +31,6 @@
 %%
 
 start_link(TeleviewId, RendererId, Topic, Args, Context) ->
-    ?DEBUG({start_link, TeleviewId, RendererId, Topic, Args}),
-
     AsyncContext = z_context:prune_for_async(Context),
     supervisor:start_link(
       {via, z_proc, {{?MODULE, TeleviewId, RendererId}, Context}}, ?MODULE,
@@ -45,8 +41,6 @@ start_link(TeleviewId, RendererId, Topic, Args, Context) ->
 %%
 
 init([TeleviewId, RendererId, Topic, Args, Context]) ->
-    ?DEBUG({init_renderer_sup, TeleviewId, Topic, Args, self()}),
-
     DifferSpec = #{id => z_teleview_differ,
                    start => {z_teleview_differ, start_link,
                              [TeleviewId, RendererId, Topic, Args, Context]},
@@ -70,41 +64,4 @@ init([TeleviewId, RendererId, Topic, Args, Context]) ->
        [DifferSpec, RenderSpec]
       }
     }.
-
-%%
-%% Helpers
-%%
-
-%% Publish the patch on a topic.
-publish_event(Patch, [EventTopic, Context]) ->
-    z_mqtt:publish(
-      event_topic(EventTopic, Patch),
-      patch_to_map(Patch),
-      Context).
-
-% Const
-event_topic(Topic, {keyframe, _, _}) -> <<Topic/binary, "/keyframe">>;
-event_topic(Topic, {cumulative, _, _}) -> <<Topic/binary, "/cdiff">>;
-event_topic(Topic, {incremental, _, _}) -> <<Topic/binary, "/idiff">>.
-
-% Convert the patch to a map which can be transported efficiently.
-patch_to_map({keyframe, Data, Timestamp}) ->
-    #{html => Data,ts => Timestamp};
-patch_to_map({cumulative, Patch, Timestamp}) ->
-    #{cdiff => transform_patch(Patch), ts => Timestamp};
-patch_to_map({incremental, Patch, Timestamp}) ->
-    #{idiff => transform_patch(Patch), ts => Timestamp}.
-
-transform_patch(L) when is_list(L) ->
-    transform_patch(L, []).
-
-transform_patch([], Acc) ->
-    lists:reverse(Acc);
-transform_patch([{skip, I}|Rest], Acc) ->
-    transform_patch(Rest, [I, <<$s>> | Acc]);
-transform_patch([{copy, I}|Rest], Acc) ->
-    transform_patch(Rest, [I, <<$c>> | Acc]);
-transform_patch([{insert, Data}|Rest], Acc) ->
-    transform_patch(Rest, [Data, <<$i>> | Acc]).
-
 

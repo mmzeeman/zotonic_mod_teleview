@@ -27,14 +27,11 @@
 
 -export([init/1]).
 
--include_lib("zotonic_core/include/zotonic.hrl").
-
 %%
 %% Api
 %%
 
-start_link(Id, Context) ->
-    ?DEBUG({"start renderers supervisor", Id}),
+start_link(Id, _Context) ->
     supervisor:start_link(
       ?MODULE,
       [Id]

@@ -29,26 +29,17 @@
 ]).
 
 %% @doc ...
-
-m_get([TeleviewId, RendererId, keyframe | Rest], _Msg, Context) ->
-    {ok, {todo, Rest}};
-
-m_get([TeleviewId, RendererId, current | Rest], _Msg, Context) ->
-    {ok, {todo, Rest}};
-
-m_get([TeleviewId, topics, Label | Rest], _Msg, Context) ->
-    {ok, {todo, Rest}};
+%%
+%% Interface update topics:
+%%
+%% model/teleview/event/<teleview-id>/<renderer-id>/keyframe    : keyframe update
+%% model/teleview/event/<teleview-id>/<renderer-id>/cumulative  : a patch against the last keyframe
+%% model/teleview/event/<teleview-id>/<renderer-id>/incremental : a patch against the current frame.
+%%
 
 m_get(V, _Msg, _Context) ->
     lager:info("Unknown ~p lookup: ~p", [?MODULE, V]),
     {error, unknown_path}.
 
 
-%%
-%% Helpers
-%%
-
-get_topics(Label, Context) ->
-    ?DEBUG({get_topics, Label}),
-    z_teleview_state:get_topics(Label, Context).
 

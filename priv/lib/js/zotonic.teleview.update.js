@@ -1,4 +1,9 @@
-
+/**
+ *
+ * First version of the teleview viewer code.
+ *
+ * Needs to be packaged more robustly.
+ */
 
 function initTeleviewer(state) {
     const uiInsertTopic = cotonic.mqtt.fill("model/ui/insert/+uiId", {uiId: state.uiId});
@@ -28,6 +33,8 @@ function initTeleviewer(state) {
         decoder: decoder,
     };
 
+    /*
+     */
     cotonic.broker.publish(
         uiInsertTopic,
         {
@@ -37,10 +44,11 @@ function initTeleviewer(state) {
         }
     );
 
+    /*
+     *
+     */
     cotonic.broker.subscribe("bridge/origin/" + state.publish_topic + "/+type",
         function(m, a) {
-            console.log("update", a.type);
-
             updateState(a.type, m.payload, tvState);
 
             if(tvState.current_frame !== undefined) {
@@ -50,14 +58,17 @@ function initTeleviewer(state) {
     )
 }
 
+/*
+ *
+ */
 function updateState(type, update, state) {
     switch(type) {
         case "keyframe":
-            if(update.keyframe_sn > state.keyframe_sn) {
+            if(state.keyframe_sn === undefined || update.keyframe_sn > state.keyframe_sn) {
                 state.keyframe = state.current_frame = state.encoder.encode(update.frame);
                 state.keyframe_sn = state.current_frame_sn = update.keyframe_sn;
             } else {
-                console.log("Keyframe is not an update");
+                console.log("Keyframe in update is older than current state.");
             }
             break;
         case "incremental": // Patch against the current doc.
@@ -68,7 +79,7 @@ function updateState(type, update, state) {
                     state.current_frame = applyPatch(state.current_frame, update, state.encoder);
                     state.current_frame_sn = update.current_frame_sn;
                 } else {
-                    console.log("Incremental patch does not match sn");
+                    console.log("Incremental patch does not match current frame sn");
                 }
             }
 
@@ -85,7 +96,7 @@ function updateState(type, update, state) {
                         state.current_frame_sn = update.current_frame_sn;
                     }
                 } else {
-                    console.log("Cumulative patch does not match sn");
+                    console.log("Cumulative patch does not match keyframe sn");
                 }
             }
 
@@ -115,22 +126,22 @@ function applyPatch(source, update, encoder) {
     }
 
     let src_idx = 0;
-    let dst_idx=0;
+    let dst_idx = 0;
 
     for(let i = 0, l = update.patch.length; i < l; i += 2) {
-        let patch = update.patch[i];
-        let v = update.patch[i+1];
+        const patch = update.patch[i];
+        const v = update.patch[i+1];
 
         switch(patch) {
-            case "c": // copy
+            case "c": // copy src into destination buffer.
                 copyInto(array, dst_idx, src, src_idx, v);
                 src_idx += v;
                 dst_idx += v;
                 break;
-            case "s": // skip
+            case "s": // skip src
                 src_idx += v;
                 break;
-            case "i": // insert
+            case "i": // insert new string into destination buffer.
                 const data = encoder.encode(v)
                 copyInto(array, dst_idx, data);
                 dst_idx += data.length;
