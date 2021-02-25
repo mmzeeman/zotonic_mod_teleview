@@ -52,6 +52,7 @@ render(Params, Vars, Context) ->
 
             Div = z_tags:render_tag(<<"div">>, [{<<"id">>, Id}], [ CurrentFrame ]),
 
+            %% TODO: initialization needs own model/namespace
             Script = z_tags:render_tag(<<"script">>, [], [
                 <<"cotonic.ready.then(function() {">>,
                     <<"initTeleviewer(">>, JSArgs, <<");">>, 

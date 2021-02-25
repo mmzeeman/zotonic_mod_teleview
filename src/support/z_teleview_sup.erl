@@ -43,7 +43,15 @@ start_link(Id, Args, Context) ->
 %%
 
 init([Id, Args, Context]) ->
-    ?DEBUG(start_teleview_sup),
+    RenderersSpec = #{id => z_teleview_renderers_sup,
+                      start => {z_teleview_renderers_sup, start_link, [Id, Context]},
+                      restart => transient, 
+                      shutdown => infinity,
+                      type => supervisor,
+                      modules => [z_teleview_renderers_sup,
+                                  z_teleview_renderer_sup,
+                                  z_teleview_differ,
+                                  z_teleview_render]},
 
     StateSpec = #{id => z_teleview_state,
                   start => {z_teleview_state, start_link, [Id, self(), Args, Context]},
@@ -51,10 +59,12 @@ init([Id, Args, Context]) ->
                   shutdown => 5000,
                   type => worker,
                   modules => dynamic},
+
     {ok, {
        #{strategy => one_for_all,
-         intensity => 20,
+         intensity => 1,
          period => 10},
-       [StateSpec]
+       [RenderersSpec, StateSpec]
       }
     }.
+

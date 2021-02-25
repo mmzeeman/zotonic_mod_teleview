@@ -25,21 +25,34 @@
 -include_lib("zotonic_core/include/zotonic.hrl").
 
 -export([
-    m_get/3
+    m_get/3,
+    m_post/3
 ]).
 
 %% @doc ...
 %%
 %% Interface update topics:
 %%
-%% model/teleview/event/<teleview-id>/<renderer-id>/keyframe    : keyframe update
-%% model/teleview/event/<teleview-id>/<renderer-id>/cumulative  : a patch against the last keyframe
-%% model/teleview/event/<teleview-id>/<renderer-id>/incremental : a patch against the current frame.
+%% model/teleview/get/<teleview-id>/state/<renderer-id>
+%%
+%% model/teleview/post/<teleview-id>/still-watching/<renderer-id>      : Indicate that the viewer is still watching.
+%%
+%% model/teleview/event/<teleview-id>/still-watching/<renderer-id>     : Reply to keep renderer alive
+%%
+%% model/teleview/event/<teleview-id>/reset/<renderer-id>              : The viewer must be reset. Wait for new keyframe.
+%% model/teleview/event/<teleview-id>/stopped                          : The teleview is stopped. 
+%% model/teleview/event/<teleview-id>/stopped/<renderer-id>            : The teleview renderer is stopped. 
+%% model/teleview/event/<teleview-id>/update/<renderer-id>/keyframe    : keyframe update.
+%% model/teleview/event/<teleview-id>/update/<renderer-id>/cumulative  : a patch against the last keyframe.
+%% model/teleview/event/<teleview-id>/update/<renderer-id>/incremental : a patch against the current frame.
 %%
 
 m_get(V, _Msg, _Context) ->
     lager:info("Unknown ~p lookup: ~p", [?MODULE, V]),
     {error, unknown_path}.
 
+m_post([TeleviewId, still_watching, RendererId | Rest], Msg, Context) ->
+    ?DEBUG({still_watching_reply, RendererId}),
 
+    ok.
 

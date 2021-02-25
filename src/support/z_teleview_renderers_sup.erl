@@ -32,10 +32,7 @@
 %%
 
 start_link(Id, _Context) ->
-    supervisor:start_link(
-      ?MODULE,
-      [Id]
-     ).
+    supervisor:start_link(?MODULE, [Id]).
 
 
 %%

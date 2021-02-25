@@ -89,6 +89,10 @@ state(TeleviewId, RendererId, Context) ->
 %%
 
 init([Topic, Args, Context]) ->
+    ?DEBUG({differ_start, Topic}),
+
+    %% TODO: A restart needs a reset message. The sn of the viewers need to be reset.
+
     KfTopic = <<Topic/binary, "/keyframe">>,
     IpTopic = <<Topic/binary, "/incremental">>,
     CpTopic = <<Topic/binary, "/cumulative">>,

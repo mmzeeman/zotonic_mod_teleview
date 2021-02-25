@@ -31,13 +31,25 @@
 
 -include_lib("zotonic_core/include/zotonic.hrl").
 
+-define(INTERVAL_MSEC, 30000).
+
+-define(RENDERER_WARN_TIME1, 300). % 5 min
+-define(RENDERER_WARN_TIME2, 360). % 6 min
+-define(RENDERER_EXPIRE_TIME, 420). % 7 min
+
+-define(MAX_NO_RENDERERS_COUNT, 2).
+
 -record(state, {
           id,
 
           args, 
 
+          teleview_supervisor = undefined,
+
           renderers_supervisor = undefined,
           renderers = #{}, 
+
+          no_renderers_count = 0,
 
           context
          }).
@@ -58,8 +70,9 @@ start_renderer(TeleviewId, Args, Context) ->
 %%
 
 init([Id, Supervisor, #{ <<"topic">> := Topic }=Args, Context]) ->
-    %% Start the renderers supervisor.
-    self() ! {start_renderers_supervisor, Supervisor, Id, Context},
+    process_flag(trap_exit, true),
+
+    self() ! get_renderers_sup_pid,
 
     %% Subscribe to event topic.
     case z_mqtt:subscribe(Topic, Context) of
@@ -73,8 +86,10 @@ init([Id, Supervisor, #{ <<"topic">> := Topic }=Args, Context]) ->
                       Context),
             ok
     end,
+
+    trigger_check(),
         
-    {ok, #state{id=Id, args=Args, context=Context}}.
+    {ok, #state{id=Id, teleview_supervisor=Supervisor, args=Args, context=Context}}.
 
 handle_call({start_renderer, Args, RenderContext}, _From,
             #state{renderers_supervisor=RenderersSup,
@@ -89,48 +104,84 @@ handle_call({start_renderer, Args, RenderContext}, _From,
                                                z_context:prune_for_async(RenderContext)]) of
         {ok, Pid} ->
             MonitorRef = erlang:monitor(process, Pid),
-
-            Renderers1 = maps:put(Pid, #{ renderer_id => RendererId,
-                                          monitor_ref => MonitorRef }, State#state.renderers),
-
+            Renderers1 = maps:put(Pid, #{renderer_id => RendererId,
+                                         last_check => z_utils:now(), 
+                                         monitor_ref => MonitorRef}, State#state.renderers),
             RendererState = #{publish_topic => PublishTopic},
-            {reply, {ok, RendererState}, State#state{renderers=Renderers1}};
+            {reply, {ok, RendererState}, State#state{no_renderers_count=0, renderers=Renderers1}};
         {error, {already_started, _Pid}} ->
             RendererState = z_teleview_differ:state(State#state.id, RendererId, RenderContext),
-            {reply, {ok, RendererState}, State};
+            {reply, {ok, RendererState}, State#state{no_renderers_count=0}};
         {error, Error} ->
             {reply, {error, {could_not_start, Error}}, State}
     end;
+
+handle_call({start_renderer, Args, RenderContext}, _From, #state{args=TeleviewArgs}=State) ->
+    {stop, no_renderer_supervisor, State};
+
 handle_call(Msg, _From, State) ->
     {stop, {unknown_call, Msg}, State}.
 
 handle_cast(Msg, State) ->
     {stop, {unknown_cast, Msg}, State}.
 
-handle_info({start_renderers_supervisor, Sup, Id, Context}, State) ->
-    MFA = {z_teleview_renderers_sup, start_link, [Id, Context]},
+handle_info(check, #state{renderers=Renderers, no_renderers_count=N}=State)
+  when map_size(Renderers) =:= 0 andalso N > ?MAX_NO_RENDERERS_COUNT ->
+    ?DEBUG({no_renderers_count, N}),
+    publish_event(State#state.id, stopped, State#state.context),
+    exit(State#state.teleview_supervisor, normal),
+    {stop, normal, State};
+handle_info(check, #state{renderers=Renderers, renderers_supervisor=Sup}=State) ->
+    Now = z_utils:now(),
+    maps:map(fun(Pid, #{last_check := LastCheck}=RendererInfo) ->
+                     case Now of
+                         N when N < (LastCheck + ?RENDERER_WARN_TIME1) ->
+                             ok;
+                         N when N < (LastCheck + ?RENDERER_WARN_TIME2) ->
+                             publish_event(State#state.id,
+                                           maps:get(renderer_id, RendererInfo), still_watching, State#state.context);
+                         N when N < (LastCheck + ?RENDERER_EXPIRE_TIME) ->
+                             publish_event(State#state.id,
+                                           maps:get(renderer_id, RendererInfo), still_watching, State#state.context);
+                         _ ->
+                             ?DEBUG({expire, RendererInfo}),
 
-    RenderersSpec = #{id => z_teleview_renderers_sup,
-                      start => MFA, 
-                      restart => transient, 
-                      shutdown => infinity,
-                      type => supervisor,
-                      modules => [z_teleview_renderers_sup,
-                                  z_teleview_renderer_sup,
-                                  z_teleview_differ,
-                                  z_teleview_render]},
+                             case supervisor:terminate_child(Sup, Pid) of
+                                 ok ->
+                                     publish_event(State#state.id, maps:get(renderer_id, RendererInfo), stopped, State#state.context),
+                                     supervisor:delete_child(Sup, Pid);
+                                 {error, Reason} ->
+                                     ?DEBUG({could_not_terminate, Reason})
+                             end,
 
-    {ok, Pid} = supervisor:start_child(Sup, RenderersSpec),
-    link(Pid),
+                             ok
+                     end
+             end,
+             Renderers),
 
-    {noreply, State#state{renderers_supervisor=Pid}};
+    trigger_check(),
 
-handle_info({'DOWN', _MonitorRef, process, Pid, _Info}, State) ->
+    case map_size(Renderers) of
+        0 ->
+            {noreply, State#state{no_renderers_count=State#state.no_renderers_count+1}};
+        _ ->
+            {noreply, State}
+    end;
+
+handle_info(get_renderers_sup_pid, State) ->
+    case get_renderers_sup_pid(State#state.teleview_supervisor) of
+        undefined ->
+            {stop, {error, no_renderers_supervisor}, State};
+        Pid when is_pid(Pid) ->
+            {noreply, State#state{renderers_supervisor=Pid}}
+    end; 
+
+handle_info({'DOWN', _MonitorRef, process, Pid, _Reason}, #state{renderers=Renderers}=State) ->
     %% A renderer died.
-
-    ?DEBUG({todo, handle_renderer_down, Pid}),
-
-    {noreply, State};
+    %%
+    ?DEBUG({handle_renderer_down, Pid}),
+    Renderers1 = maps:remove(Pid, Renderers),
+    {noreply, State#state{renderers=Renderers1}};
 
 handle_info({mqtt_msg, Msg}, State) ->
     %% Trigger a render on all renderers.
@@ -144,7 +195,8 @@ handle_info(Info, State) ->
     ?DEBUG(Info),
     {noreply, State}.
 
-terminate(_Reason, _State) ->
+terminate(Reason, _State) ->
+    ?DEBUG({terminate, Reason}),
     ok.
 
 code_change(_OldVsn, State, _Extra) ->
@@ -154,6 +206,10 @@ code_change(_OldVsn, State, _Extra) ->
 %% Helpers
 %%
 
+
+trigger_check() ->
+    erlang:send_after(?INTERVAL_MSEC, self(), check).
+
 trigger_render(TeleviewId, Renderers, Args, Context) ->
     maps:map(fun(_RendererSupPid, #{renderer_id := RendererId}) ->
                      z_teleview_render:render(TeleviewId, RendererId, Args, Context)
@@ -161,3 +217,22 @@ trigger_render(TeleviewId, Renderers, Args, Context) ->
              Renderers),
     ok.
 
+
+publish_event(TeleviewId, Event, Context) ->
+    z_mqtt:publish([model, teleview, TeleviewId, Event], #{}, z_acl:sudo(Context)).
+
+publish_event(TeleviewId, RendererId, Event, Context) ->
+    z_mqtt:publish([model, teleview, TeleviewId, Event, RendererId], #{}, z_acl:sudo(Context)).
+
+% Get renderers supervisor pid from the supervisor.
+get_renderers_sup_pid(SupervisorPid) when is_pid(SupervisorPid) ->
+    get_renderers_sup_pid(supervisor:which_children(SupervisorPid));
+get_renderers_sup_pid([]) ->
+    undefined;
+get_renderers_sup_pid([{z_teleview_renderers_sup, Pid, _, _}|_Rest]) ->
+    Pid;
+get_renderers_sup_pid([_Child|Rest]) ->
+    get_renderers_sup_pid(Rest).
+
+
+    

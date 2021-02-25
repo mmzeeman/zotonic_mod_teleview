@@ -74,6 +74,8 @@ render(TeleviewId, RendererId, Args, Context) ->
 %%
 
 init([Supervisor, TeleviewId, RendererId, #{<<"template">> := Template}=Args, Context]) ->
+    ?DEBUG({renderer_start, TeleviewId, RendererId}),
+
     %% init, otherwise the supervisor will deadlock causing a timeout.
     self() ! {get_differ_pid, Supervisor},
 
@@ -126,7 +128,7 @@ handle_info(render, #state{render_result=RenderResult, render_args=undefined, pr
 handle_info({get_differ_pid, Supervisor}, State) ->
     case get_differ_pid(Supervisor) of
         undefined ->
-            {noreply, State}; 
+            {noreply, stop, {error, no_differ}}; 
         Pid when is_pid(Pid) ->
             {noreply, State#state{differ_pid = Pid}}
     end;

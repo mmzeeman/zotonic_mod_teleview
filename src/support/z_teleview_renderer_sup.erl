@@ -1,8 +1,8 @@
 %% @author Maas-Maarten Zeeman <mmzeeman@xs4all.nl>
-%% @copyright 2019 Maas-Maarten Zeeman
+%% @copyright 2019-2021 Maas-Maarten Zeeman
 %% @doc TeleView renderer supervisor for a single render -> differ pipeline.
 
-%% Copyright 2019 Maas-Maarten Zeeman 
+%% Copyright 2019-2021 Maas-Maarten Zeeman 
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -59,8 +59,8 @@ init([TeleviewId, RendererId, Topic, Args, Context]) ->
 
     {ok, {
        #{strategy => one_for_all,
-         intensity => 20,
-         period => 10},
+         intensity => 1,
+         period => 5},
        [DifferSpec, RenderSpec]
       }
     }.
