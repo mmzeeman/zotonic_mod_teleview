@@ -21,7 +21,7 @@
 
 -behaviour(supervisor).
 
--export([start_link/5]).
+-export([start_link/4]).
 -export([init/1]).
 
 -include_lib("zotonic_core/include/zotonic.hrl").
@@ -30,20 +30,20 @@
 %% Api
 %%
 
-start_link(TeleviewId, RendererId, Topic, Args, Context) ->
+start_link(TeleviewId, RendererId, Args, Context) ->
     AsyncContext = z_context:prune_for_async(Context),
     supervisor:start_link(
       {via, z_proc, {{?MODULE, TeleviewId, RendererId}, Context}}, ?MODULE,
-      [TeleviewId, RendererId, Topic, Args, AsyncContext]).
+      [TeleviewId, RendererId, Args, AsyncContext]).
 
 %%
 %% supervisor callback
 %%
 
-init([TeleviewId, RendererId, Topic, Args, Context]) ->
+init([TeleviewId, RendererId, Args, Context]) ->
     DifferSpec = #{id => z_teleview_differ,
                    start => {z_teleview_differ, start_link,
-                             [TeleviewId, RendererId, Topic, Args, Context]},
+                             [TeleviewId, RendererId, Args, Context]},
                    restart => transient,
                    shutdown => 1000,
                    type => worker,

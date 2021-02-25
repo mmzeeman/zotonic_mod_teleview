@@ -40,7 +40,6 @@ render(Params, Vars, Context) ->
             RenderState1 = maps:put(uiId, Id, RenderState),
 
             CurrentFrame = maps:get(current_frame, RenderState1, <<>>),
-            PublishTopic = maps:get(publish_topic, RenderState1),
 
             JSArgs = case maps:get(min_time, RenderState1, undefined) of
                          0 ->

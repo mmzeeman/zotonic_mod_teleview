@@ -29,6 +29,9 @@
 %% Generates diffs to update remote views with a minimum use of bandwith.
 
 -record(state, {
+          teleview_id,
+          renderer_id,
+
           keyframe :: undefined | binary(),
           keyframe_sn = 0 :: non_neg_integer(),
           last_time = 0 :: integer(),
@@ -42,18 +45,12 @@
           min_time=?DEFAULT_MIN_TIME :: non_neg_integer(),        % minimum time between keyframes. 
           max_time=?DEFAULT_MAX_TIME :: pos_integer() | infinite, % integer in ms | infinite
 
-          publish_topic,
-
-          keyframe_topic,
-          cumulative_patch_topic,
-          incremental_patch_topic,
-
           context :: zotonic:context()
 }).
 
 %% api
 -export([
-    start_link/5,
+    start_link/4,
     new_frame/2,
 
     state/3
@@ -70,10 +67,10 @@
 %% Api
 %% 
 
-start_link(TeleviewId, RendererId, PublishTopic, Args, Context) -> 
+start_link(TeleviewId, RendererId, Args, Context) -> 
     gen_server:start_link({via, z_proc, {{?MODULE, TeleviewId, RendererId}, Context}},
                           ?MODULE,
-                          [PublishTopic, Args, Context], []).
+                          [TeleviewId, RendererId, Args, Context], []).
   
 new_frame(Pid, NewFrame) ->
     gen_server:call(Pid, {new_frame, NewFrame}).
@@ -88,21 +85,15 @@ state(TeleviewId, RendererId, Context) ->
 %% gen_server callbacks
 %%
 
-init([Topic, Args, Context]) ->
-    ?DEBUG({differ_start, Topic}),
+init([TeleviewId, RendererId, Args, Context]) ->
+    ?DEBUG({differ_start, TeleviewId, RendererId}),
 
-    %% TODO: A restart needs a reset message. The sn of the viewers need to be reset.
-
-    KfTopic = <<Topic/binary, "/keyframe">>,
-    IpTopic = <<Topic/binary, "/incremental">>,
-    CpTopic = <<Topic/binary, "/cumulative">>,
+    m_teleview:publish_event(reset, TeleviewId, RendererId, #{}, Context),
 
     {ok, #state{min_time=maps:get(differ_min_time, Args, ?DEFAULT_MIN_TIME),
                 max_time=maps:get(differ_max_time, Args, ?DEFAULT_MAX_TIME),
-                publish_topic=Topic,
-                keyframe_topic=KfTopic,
-                incremental_patch_topic=IpTopic,
-                cumulative_patch_topic=CpTopic,
+                teleview_id=TeleviewId,
+                renderer_id=RendererId,
                 context=Context}}.
 
 %
@@ -125,7 +116,8 @@ handle_call(state, _From, State) ->
                     current_frame_sn => State#state.current_frame_sn,
                     min_time => State#state.min_time,
                     max_time => State#state.max_time,
-                    publish_topic =>State#state.publish_topic
+                    teleview_id => State#state.teleview_id,
+                    renderer_id => State#state.renderer_id
                    },
 
     {reply, DifferState, State};
@@ -161,11 +153,20 @@ code_change(_OldVsn, State, _Extra) ->
 %%
 
 broadcast_patch({keyframe, Msg}, State) ->
-    z_mqtt:publish(State#state.keyframe_topic, Msg, z_acl:sudo(State#state.context));
+    m_teleview:publish_event(update, keyframe,
+                             State#state.teleview_id, State#state.renderer_id,
+                             Msg,
+                             State#state.context);
 broadcast_patch({incremental, Msg}, State) ->
-    z_mqtt:publish(State#state.incremental_patch_topic, Msg, z_acl:sudo(State#state.context));
+    m_teleview:publish_event(update, incremental,
+                             State#state.teleview_id, State#state.renderer_id,
+                             Msg,
+                             State#state.context);
 broadcast_patch({cumulative, Msg}, State) ->
-    z_mqtt:publish(State#state.cumulative_patch_topic, Msg, z_acl:sudo(State#state.context)).
+    m_teleview:publish_event(update, cumulative,
+                             State#state.teleview_id, State#state.renderer_id,
+                             Msg,
+                             State#state.context).
 
 %% Create the next patch
 %%

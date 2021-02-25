@@ -29,6 +29,12 @@
     m_post/3
 ]).
 
+-export([
+    publish_event/4,
+    publish_event/5,
+    publish_event/6
+]).
+
 %% @doc ...
 %%
 %% Interface update topics:
@@ -37,11 +43,13 @@
 %%
 %% model/teleview/post/<teleview-id>/still-watching/<renderer-id>      : Indicate that the viewer is still watching.
 %%
-%% model/teleview/event/<teleview-id>/still-watching/<renderer-id>     : Reply to keep renderer alive
+%%
+%% model/teleview/event/<teleview-id>/stopped                          : The whole teleview is stopped. 
 %%
 %% model/teleview/event/<teleview-id>/reset/<renderer-id>              : The viewer must be reset. Wait for new keyframe.
-%% model/teleview/event/<teleview-id>/stopped                          : The teleview is stopped. 
 %% model/teleview/event/<teleview-id>/stopped/<renderer-id>            : The teleview renderer is stopped. 
+%% model/teleview/event/<teleview-id>/down/<renderer-id>               : The teleview renderer down/stopped/crashed. 
+%% model/teleview/event/<teleview-id>/still-watching/<renderer-id>     : Reply to keep renderer alive
 %% model/teleview/event/<teleview-id>/update/<renderer-id>/keyframe    : keyframe update.
 %% model/teleview/event/<teleview-id>/update/<renderer-id>/cumulative  : a patch against the last keyframe.
 %% model/teleview/event/<teleview-id>/update/<renderer-id>/incremental : a patch against the current frame.
@@ -51,8 +59,25 @@ m_get(V, _Msg, _Context) ->
     lager:info("Unknown ~p lookup: ~p", [?MODULE, V]),
     {error, unknown_path}.
 
-m_post([TeleviewId, still_watching, RendererId | Rest], Msg, Context) ->
-    ?DEBUG({still_watching_reply, RendererId}),
+m_post([Teleview, <<"still_watching">>, Renderer | Rest], Msg, Context) ->
+    z_teleview_state:keep_alive(z_convert:to_integer(Teleview), z_convert:to_integer(Renderer), Context),
+    ok;
+m_post(Topic, Msg, Context) ->
+    ?DEBUG(Topic),
 
     ok.
+
+%%
+%% API
+%%
+
+publish_event(Event, TeleviewId, Msg, Context) ->
+    z_mqtt:publish([model, teleview, event, TeleviewId, Event], Msg, z_acl:sudo(Context)).
+
+publish_event(Event, TeleviewId, RendererId, Msg, Context) ->
+    z_mqtt:publish([model, teleview, event, TeleviewId, Event, RendererId], Msg, z_acl:sudo(Context)).
+
+publish_event(Event, SubEvent, TeleviewId, RendererId, Msg, Context) ->
+    z_mqtt:publish([model, teleview, event, TeleviewId, Event, RendererId, SubEvent], Msg, z_acl:sudo(Context)).
+
 

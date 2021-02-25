@@ -6,6 +6,8 @@
  */
 
 function initTeleviewer(state) {
+    console.log(state);
+
     const uiInsertTopic = cotonic.mqtt.fill("model/ui/insert/+uiId", {uiId: state.uiId});
     const uiUpdateTopic = cotonic.mqtt.fill("model/ui/update/+uiId", {uiId: state.uiId});
 
@@ -21,8 +23,6 @@ function initTeleviewer(state) {
 
         max_time: state.max_time,
         min_time: state.min_time,
-
-        publish_topic: state.publish_topic,
 
         current_text: function() {
             let t = decoder.decode(tvState.current_frame);
@@ -44,15 +44,36 @@ function initTeleviewer(state) {
         }
     );
 
-    /*
-     *
-     */
-    cotonic.broker.subscribe("bridge/origin/" + state.publish_topic + "/+type",
-        function(m, a) {
-            updateState(a.type, m.payload, tvState);
+    const evtTopic = "bridge/origin/model/teleview/event/"
+        + state.teleview_id
+        + "/+evt_type/"
+        + state.renderer_id
+        + "/#args";
 
-            if(tvState.current_frame !== undefined) {
-                cotonic.broker.publish(uiUpdateTopic, tvState.current_text());
+    cotonic.broker.subscribe(evtTopic, 
+        function(m, a) {
+            switch(a.evt_type) {
+                case "update":
+                    updateState(a.args[0], m.payload, tvState);
+
+                    if(tvState.current_frame !== undefined) {
+                        cotonic.broker.publish(uiUpdateTopic, tvState.current_text());
+                    }
+
+                    break;
+                case "reset":
+                    tvState.keyframe  = undefined;
+                    tvState.keyframe_sn = 0;
+                    tvState.current_frame = undefined;
+                    tvState.current_frame_sn = 0;
+
+                    break;
+                case "still_watching":
+                    cotonic.broker.publish(
+                        cotonic.mqtt.fill("bridge/origin/model/teleview/post/+teleview_id/still_watching/+renderer_id", state),
+                        {});
+
+                    break;
             }
         }
     )
