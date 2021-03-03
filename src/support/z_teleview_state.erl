@@ -33,10 +33,14 @@
 
 -include_lib("zotonic_core/include/zotonic.hrl").
 
--define(INTERVAL_MSEC, 30000).
+% -define(INTERVAL_MSEC, 30000).
+-define(INTERVAL_MSEC, 10000).
 
--define(RENDERER_WARN_TIME, 60). % 5 min
--define(RENDERER_EXPIRE_TIME, 420). % 7 min
+% -define(RENDERER_WARN_TIME, 60). % 5 min
+-define(RENDERER_WARN_TIME, 15). % 5 min
+
+% -define(RENDERER_EXPIRE_TIME, 420). % 7 min
+-define(RENDERER_EXPIRE_TIME, 30). % 7 min
 
 -define(MAX_NO_RENDERERS_COUNT, 2).
 
@@ -45,9 +49,9 @@
 
           args, 
 
-          teleview_supervisor = undefined,
+          teleview_supervisor = undefined,  %% The supervisor of the teleview
 
-          renderers_supervisor = undefined,
+          renderers_supervisor = undefined, %% The supervisor of all renderers
           renderers = #{}, 
 
           no_renderers_count = 0,
@@ -91,6 +95,8 @@ init([Id, Supervisor, #{ <<"topic">> := Topic }=Args, Context]) ->
                       Context),
             ok
     end,
+
+    m_teleview:publish_event(started, Id, #{ }, Context),
 
     trigger_check(),
         
@@ -142,10 +148,8 @@ handle_cast(Msg, State) ->
 
 handle_info(check, #state{renderers=Renderers, no_renderers_count=N}=State)
   when map_size(Renderers) =:= 0 andalso N > ?MAX_NO_RENDERERS_COUNT ->
-    ?DEBUG({no_renderers_count, N}),
-    m_teleview:publish_event(stopped, State#state.id, #{}, State#state.context),
-    exit(State#state.teleview_supervisor, normal),
-    {stop, normal, State};
+    mod_teleview:stop_teleview(State#state.id, State#state.context),
+    {noreply, State};
 handle_info(check, #state{renderers=Renderers, renderers_supervisor=Sup}=State) ->
     Now = z_utils:now(),
 
@@ -187,14 +191,13 @@ handle_info(get_renderers_sup_pid, State) ->
         undefined ->
             {stop, {error, no_renderers_supervisor}, State};
         Pid when is_pid(Pid) ->
+            link(Pid),
             {noreply, State#state{renderers_supervisor=Pid}}
     end; 
 
 handle_info({'DOWN', _MonitorRef, process, Pid, Reason}, #state{renderers=Renderers}=State) ->
     %% A renderer died.
     %%
-    ?DEBUG({handle_renderer_down, Pid}),
-
     case maps:get(Pid, Renderers, undefined) of
         undefined ->
             {noreply, State};
@@ -217,8 +220,8 @@ handle_info(Info, State) ->
     ?DEBUG(Info),
     {noreply, State}.
 
-terminate(Reason, _State) ->
-    ?DEBUG({terminate, Reason}),
+terminate(Reason, State) ->
+    m_teleview:publish_event(stopped, State#state.id, #{ reason => Reason }, State#state.context),
     ok.
 
 code_change(_OldVsn, State, _Extra) ->

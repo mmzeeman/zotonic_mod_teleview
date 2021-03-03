@@ -34,6 +34,7 @@
 
 -export([
     start_teleview/2,
+    stop_teleview/2,
     start_renderer/3,
     render/3,
     render/4
@@ -55,6 +56,7 @@ start_teleview(Args, Context) ->
 % @doc start_teleview starts a new teleview with the given Id.
 start_teleview(Id, #{ <<"template">> := _Template } = Args, Context) ->
     AsyncContext = z_context:prune_for_async(Context),
+
     case supervisor:start_child(z_utils:name_for_site(?SERVER, Context), [Id, Args, AsyncContext]) of
         {ok, _Pid} ->
             {ok, Id};
@@ -64,6 +66,18 @@ start_teleview(Id, #{ <<"template">> := _Template } = Args, Context) ->
             Error
     end.
 
+
+% 
+stop_teleview(Id, Context) ->
+    case z_proc:whereis_name({{z_teleview_sup, Id}, Context}) of
+        Pid when is_pid(Pid) ->
+            case supervisor:terminate_child(z_utils:name_for_site(?SERVER, Context), Pid) of
+                ok -> ok;
+                {error, not_found} -> ok
+            end;
+        _ ->
+            ok
+    end.
 
 % @doc Start a new renderer belonging to a teleview. The passed args and context are
 % used for rendering.
@@ -77,8 +91,6 @@ render(TeleviewId, RendererId, Context) ->
 % @doc Trigger a render, with args, of a specific renderer of a teleview.
 render(TeleviewId, RendererId, Args, Context) -> 
     z_teleview_render:render(TeleviewId, RendererId, Args, Context).
-
-
 
 
 %%

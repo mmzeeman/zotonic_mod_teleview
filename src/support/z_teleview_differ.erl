@@ -86,8 +86,7 @@ state(TeleviewId, RendererId, Context) ->
 %%
 
 init([TeleviewId, RendererId, Args, Context]) ->
-    ?DEBUG({differ_start, TeleviewId, RendererId}),
-
+    % When we restarted because of an error, the viewers should be reset.
     m_teleview:publish_event(reset, TeleviewId, RendererId, #{}, Context),
 
     {ok, #state{min_time=maps:get(differ_min_time, Args, ?DEFAULT_MIN_TIME),

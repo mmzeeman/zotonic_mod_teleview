@@ -74,8 +74,6 @@ render(TeleviewId, RendererId, Args, Context) ->
 %%
 
 init([Supervisor, TeleviewId, RendererId, #{<<"template">> := Template}=Args, Context]) ->
-    ?DEBUG({renderer_start, TeleviewId, RendererId}),
-
     %% init, otherwise the supervisor will deadlock causing a timeout.
     self() ! {get_differ_pid, Supervisor},
 

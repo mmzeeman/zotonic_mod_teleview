@@ -6,8 +6,6 @@
  */
 
 function initTeleviewer(state) {
-    console.log(state);
-
     const uiInsertTopic = cotonic.mqtt.fill("model/ui/insert/+uiId", {uiId: state.uiId});
     const uiUpdateTopic = cotonic.mqtt.fill("model/ui/update/+uiId", {uiId: state.uiId});
 
@@ -44,13 +42,29 @@ function initTeleviewer(state) {
         }
     );
 
-    const evtTopic = "bridge/origin/model/teleview/event/"
+    const televiewEventTopic = "bridge/origin/model/teleview/event/"
         + state.teleview_id
-        + "/+evt_type/"
+        + "/+evt_type";
+
+    const rendererEventTopic = televiewEventTopic
+        + "/"
         + state.renderer_id
         + "/#args";
 
-    cotonic.broker.subscribe(evtTopic, 
+    cotonic.broker.subscribe(televiewEventTopic,
+        function(m, a) {
+            console.log("teleview event", a, m);
+
+            switch(a.evt_type) {
+                case "stopped": 
+                    // [TODO] Maybe update a state class on the wrapper div here.
+                    cotonic.broker.publish(uiUpdateTopic, "<p>Teleview stopped</p>");
+                    break;
+            }
+        }
+    );
+
+    cotonic.broker.subscribe(rendererEventTopic, 
         function(m, a) {
             switch(a.evt_type) {
                 case "update":
