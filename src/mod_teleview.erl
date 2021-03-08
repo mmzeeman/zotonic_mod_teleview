@@ -33,9 +33,14 @@
 -export([init/1]).
 
 -export([
+    observe_acl_is_allowed/2,
+    observe_tick_1m/2,
+
     start_teleview/2,
     stop_teleview/2,
+
     start_renderer/3,
+
     render/3,
     render/4
 ]).
@@ -59,15 +64,17 @@ start_teleview(Id, #{ <<"template">> := _Template } = Args, Context) ->
 
     case supervisor:start_child(z_utils:name_for_site(?SERVER, Context), [Id, Args, AsyncContext]) of
         {ok, _Pid} ->
+            z_teleview_acl:ensure_teleview_access(Id, Context),
             {ok, Id};
         {error, {already_started, _Pid}} -> 
+            z_teleview_acl:ensure_teleview_access(Id, Context),
             {ok, Id};
         {error, _}=Error ->
             Error
     end.
 
 
-% 
+% @doc Stop the teleview with the specified id.
 stop_teleview(Id, Context) ->
     case z_proc:whereis_name({{z_teleview_sup, Id}, Context}) of
         Pid when is_pid(Pid) ->
@@ -80,9 +87,15 @@ stop_teleview(Id, Context) ->
     end.
 
 % @doc Start a new renderer belonging to a teleview. The passed args and context are
-% used for rendering.
+% used for rendering. The teleview must already be started earlier.
 start_renderer(TeleviewId, Args, Context) ->
-    z_teleview_state:start_renderer(TeleviewId, Args, Context).
+    case ?DEBUG(z_teleview_state:start_renderer(TeleviewId, Args, Context)) of
+        {ok, #{ teleview_id := TeleviewId, renderer_id := RendererId }=RendererArgs} ->
+            z_teleview_acl:ensure_renderer_access(TeleviewId, RendererId, Context),
+            {ok, RendererArgs};
+        Error ->
+            Error 
+    end.
 
 % @doc Trigger a render of a specific renderer of a teleview.
 render(TeleviewId, RendererId, Context) -> 
@@ -93,16 +106,30 @@ render(TeleviewId, RendererId, Args, Context) ->
     z_teleview_render:render(TeleviewId, RendererId, Args, Context).
 
 
+% @doc Check if the access to teleview and renderer topics is allowed
+observe_acl_is_allowed(#acl_is_allowed{action=subscribe,
+                                       object=#acl_mqtt{topic=[<<"model">>, <<"teleview">>, <<"event">> | TeleviewEventTopic]}}, Context) ->
+    z_teleview_acl:is_event_subscribe_allowed(TeleviewEventTopic, Context);
+observe_acl_is_allowed(#acl_is_allowed{}, _Context) ->
+    undefined.
+
+observe_tick_1m(tick_1m, Context) ->
+    z_teleview_acl:cleanup_table(Context).
+
+
 %%
 %% Supervisor callback
 %%
 
 init(Args) ->
     {context, Context} = proplists:lookup(context, Args),
+
     lager:md([
               {site, z_context:site(Context)},
               {module, ?MODULE}
              ]),
+
+    z_teleview_acl:init_table(Context),
 
     TeleviewSpec = #{id => z_teleview_sup,
                      start => {z_teleview_sup, start_link, []},
