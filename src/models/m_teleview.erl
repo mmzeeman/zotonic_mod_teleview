@@ -59,7 +59,8 @@ m_get(V, _Msg, _Context) ->
     {error, unknown_path}.
 
 m_post([Teleview, <<"still_watching">>, Renderer | Rest], Msg, Context) ->
-    z_teleview_state:keep_alive(z_convert:to_integer(Teleview), z_convert:to_integer(Renderer), Context),
+    z_teleview_state:keep_alive(z_convert:to_integer(Teleview),
+                                z_convert:to_integer(Renderer), Context),
     ok;
 m_post(Topic, Msg, Context) ->
     ?DEBUG(Topic),

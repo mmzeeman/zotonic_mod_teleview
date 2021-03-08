@@ -42,7 +42,10 @@
     start_renderer/3,
 
     render/3,
-    render/4
+    render/4,
+
+    teleview_count/1,
+    renderer_count/1
 ]).
 
 -define(SERVER, ?MODULE).
@@ -55,6 +58,8 @@ start_link(Args) ->
 
 % @doc start_teleview without giving an explicit Id. The Id will be generated.
 start_teleview(Args, Context) ->
+    %% Make an id using the arguments of the teleview. When the topic, or
+    %% template is changed, this will result in a new teleview.
     Id = erlang:phash2(Args),
     start_teleview(Id, Args, Context).
 
@@ -89,7 +94,7 @@ stop_teleview(Id, Context) ->
 % @doc Start a new renderer belonging to a teleview. The passed args and context are
 % used for rendering. The teleview must already be started earlier.
 start_renderer(TeleviewId, Args, Context) ->
-    case ?DEBUG(z_teleview_state:start_renderer(TeleviewId, Args, Context)) of
+    case z_teleview_state:start_renderer(TeleviewId, Args, Context) of
         {ok, #{ teleview_id := TeleviewId, renderer_id := RendererId }=RendererArgs} ->
             z_teleview_acl:ensure_renderer_access(TeleviewId, RendererId, Context),
             {ok, RendererArgs};
@@ -113,8 +118,28 @@ observe_acl_is_allowed(#acl_is_allowed{action=subscribe,
 observe_acl_is_allowed(#acl_is_allowed{}, _Context) ->
     undefined.
 
+% @doc Cleanup the acl table
 observe_tick_1m(tick_1m, Context) ->
     z_teleview_acl:cleanup_table(Context).
+
+% @doc Return the number of televiews
+teleview_count(Context) ->
+    Counts = supervisor:count_children(z_utils:name_for_site(?SERVER, Context)),
+    proplists:get_value(active, Counts).
+
+% @doc Return the number of renderers
+renderer_count(Context) ->
+    RendererCounts = [ begin 
+                           Children = supervisor:which_children(Pid),
+                           case lists:keyfind(z_teleview_renderers_sup, 1, Children) of
+                                false -> 0;
+                                {z_teleview_renderers_sup, RenderersSupPid, _, _} ->
+                                   Counts = supervisor:count_children(RenderersSupPid),
+                                   proplists:get_value(active, Counts)
+                           end
+                        end || {_, Pid, supervisor, _} <- supervisor:which_children(z_utils:name_for_site(?SERVER, Context))],
+
+    lists:sum(RendererCounts).
 
 
 %%

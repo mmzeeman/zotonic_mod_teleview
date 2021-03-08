@@ -33,14 +33,10 @@
 
 -include_lib("zotonic_core/include/zotonic.hrl").
 
-% -define(INTERVAL_MSEC, 30000).
--define(INTERVAL_MSEC, 10000).
+-define(INTERVAL_MSEC, 30000).
 
-% -define(RENDERER_WARN_TIME, 60). % 5 min
--define(RENDERER_WARN_TIME, 15). % 5 min
-
-% -define(RENDERER_EXPIRE_TIME, 420). % 7 min
--define(RENDERER_EXPIRE_TIME, 30). % 7 min
+-define(RENDERER_WARN_TIME, 60). % 5 min
+-define(RENDERER_EXPIRE_TIME, 420). % 7 min
 
 -define(MAX_NO_RENDERERS_COUNT, 2).
 
@@ -254,4 +250,3 @@ get_renderers_sup_pid([_Child|Rest]) ->
     get_renderers_sup_pid(Rest).
 
 
-    

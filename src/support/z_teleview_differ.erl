@@ -57,7 +57,6 @@
 ]).
 
 
-
 -include_lib("zotonic_core/include/zotonic.hrl").
 
 %% gen_server callbacks
