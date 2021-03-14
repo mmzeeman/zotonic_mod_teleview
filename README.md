@@ -11,7 +11,30 @@ between the teleview and its client-side viewport is done via MQTT topics. Clien
 subscribe to a renderer, the renderer sends a video like update stream which allows the viewport to gradually
 update its part of the dom-tree.
 
-# Design
+# Add a teleview to a page
+
+
+```
+{% teleview 
+       type = "<type-name>"
+       args = %{id: id,
+                template: "_a_template.tpl",
+                topic: <topic to listen to>
+              }
+%}
+```
+
+When this scomp is placed on a page, the scomp will ensure the teleview and renderer are started. A teleview
+can have multiple renderers depending on the situation. A different renderer could be started because of 
+authorization levels. This means different admin and visitor views. Or different views per user id, language
+and other possibilities.
+
+The scomp will sent a notification `ensure_teleview`. An observer can then make sure a teleview process and 
+a renderer is started. When the renderer is already started, the current renderer state will be added to the
+html output of the teleview scomp.
+
+A piece of javascript code will subscribe itself to the update topic of the teleview renderer. This will keep
+the view updated.
 
 # Technical Details
 
