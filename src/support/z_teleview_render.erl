@@ -41,7 +41,9 @@
 
 -record(state, {
     template :: binary(), % the template to use to render
+
     args :: map(), % the arguments used to render
+
     render_context :: zotonic:context(), % the context to use to render with
 
     processing = false :: boolean(), % To indicate that the process is busy processing 
@@ -166,7 +168,7 @@ diff_wait_time(N) ->
 
 % Render the template with the supplied vars and send the result to the differ.
 render(Args, #state{template=Template, args=RenderArgs, render_context=Context}) ->
-    Args1 = merge_args(Args, RenderArgs),
+    Args1 = merge_args(RenderArgs, Args),
     {IOList, _Context} = z_template:render_to_iolist(Template, Args1, Context),
     z_convert:to_binary(IOList).
 

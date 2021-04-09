@@ -206,12 +206,17 @@ handle_info({'DOWN', _MonitorRef, process, Pid, Reason}, #state{renderers=Render
 
 handle_info({mqtt_msg, Msg}, State) ->
     %% Trigger a render on all renderers.
+    Args1 = case z_notifier:first({pre_teleview_render, State#state.id, Msg, State#state.args}, State#state.context) of
+                undefined -> State#state.args;
+                NewArgs when is_map(NewArgs) -> NewArgs
+            end,
+
     trigger_render(State#state.id,
                    State#state.renderers,
-                   #{mqtt_msg => maps:without([publisher_context], Msg)},
+                   Args1,
                    State#state.context),
 
-    {noreply, State};
+    {noreply, State#state{args=Args1}};
 handle_info(Info, State) ->
     ?DEBUG(Info),
     {noreply, State}.
