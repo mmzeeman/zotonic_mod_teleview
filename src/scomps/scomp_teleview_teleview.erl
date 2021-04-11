@@ -30,10 +30,13 @@ vary(_Params, _Context) -> nocache.
 %% is going to manage the view.
 
 render(Params, Vars, Context) ->
-    {type, Type} = proplists:lookup(type, Params),
-    {args, Args} = proplists:lookup(args, Params),
+    Args = maps:from_list(Params),
 
-    case z_notifier:first({ensure_teleview, Type, Args}, Context) of
+    case z_notifier:first({ensure_teleview, Args}, Context) of
+        undefined ->
+            {error, {no_teleview, Args}};
+        {error, _E}=Error ->
+            {error, Error};
         {ok, RenderState} ->
             Id = z_ids:identifier(),
 
@@ -58,9 +61,6 @@ render(Params, Vars, Context) ->
                 <<"});">>
             ]),
 
-            {ok, [Div, Script]};
-
-        {error, _E}=Error ->
-            {error, Error}
+            {ok, [Div, Script]}
     end.
 

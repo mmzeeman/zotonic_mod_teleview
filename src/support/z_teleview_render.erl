@@ -75,7 +75,7 @@ render(TeleviewId, RendererId, Args, Context) ->
 %% gen_server callbacks.
 %%
 
-init([Supervisor, TeleviewId, RendererId, #{<<"template">> := Template}=Args, Context]) ->
+init([Supervisor, TeleviewId, RendererId, #{template := Template}=Args, Context]) ->
     %% init, otherwise the supervisor will deadlock causing a timeout.
     self() ! {get_differ_pid, Supervisor},
 

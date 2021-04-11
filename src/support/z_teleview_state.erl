@@ -74,7 +74,7 @@ keep_alive(TeleviewId, RendererId, Context) ->
 %% gen_server callbacks.
 %%
 
-init([Id, Supervisor, #{ <<"topic">> := Topic }=Args, Context]) ->
+init([Id, Supervisor, #{ topic := Topic }=Args, Context]) ->
     process_flag(trap_exit, true),
 
     self() ! get_renderers_sup_pid,
