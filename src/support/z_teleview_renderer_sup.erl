@@ -31,19 +31,20 @@
 %%
 
 start_link(TeleviewId, RendererId, Args, Context) ->
-    AsyncContext = z_context:prune_for_async(Context),
     supervisor:start_link(
       {via, z_proc, {{?MODULE, TeleviewId, RendererId}, Context}}, ?MODULE,
-      [TeleviewId, RendererId, Args, AsyncContext]).
+      [TeleviewId, RendererId, Args, Context]).
 
 %%
 %% supervisor callback
 %%
 
 init([TeleviewId, RendererId, Args, Context]) ->
+    RendererContext = renderer_context(Args, Context),
+
     DifferSpec = #{id => z_teleview_differ,
                    start => {z_teleview_differ, start_link,
-                             [TeleviewId, RendererId, Args, Context]},
+                             [TeleviewId, RendererId, Args, RendererContext]},
                    restart => transient,
                    shutdown => 1000,
                    type => worker,
@@ -51,7 +52,7 @@ init([TeleviewId, RendererId, Args, Context]) ->
 
     RenderSpec = #{id => z_teleview_render,
                    start => {z_teleview_render, start_link,
-                             [TeleviewId, RendererId, self(), Args, Context]},
+                             [TeleviewId, RendererId, self(), Args, RendererContext]},
                    restart => transient,
                    shutdown => 1000,
                    type => worker,
@@ -64,4 +65,16 @@ init([TeleviewId, RendererId, Args, Context]) ->
        [DifferSpec, RenderSpec]
       }
     }.
+
+%%
+%% Helpers
+%%
+
+renderer_context(Args, Context) ->
+    case z_notifier:first({teleview_renderer_init, Args}, Context) of
+        undefined ->
+            z_acl:anondo(Context);
+        #context{} = NewContext ->
+            NewContext
+    end.
 

@@ -36,6 +36,38 @@ html output of the teleview scomp.
 A piece of javascript code will subscribe itself to the update topic of the teleview renderer. This will keep
 the view updated.
 
+# How to implement a teleview.
+
+Put a teleview scomp into your tempate
+
+```
+{% teleview
+    type = "example"
+    template = "_example_teleview.tpl"
+    topic = "model/example/event/#"
+    
+    extra_parameter_a = 100
+    extra_parameter_b = "hello world"
+    
+    vary = %{ user_id = m.acl.user }
+%}
+```
+
+Add an observe function to start the teleview and the renderer. This function should ensure the teleview,
+and a renderer is started which 
+
+```erlang
+
+-export([observe_ensure_teleview/2]).
+
+observe_ensure_teleview({ensure_teleview, #{ type := <<"example">> }=Args}, Context) ->
+    % 
+
+observe_ensure_teleview(_Ensure, _Context) ->
+    undefined.
+
+```
+
 # Technical Details
 
 ## MQTT Topics

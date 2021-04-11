@@ -50,21 +50,23 @@
           renderers_supervisor = undefined, %% The supervisor of all renderers
           renderers = #{}, 
 
-          no_renderers_count = 0,
+          no_renderers_count = 0, %% Counter of how many times we saw that this
+                                  %% teleview has no renderers.
 
           context
          }).
 
 % @doc Start the state process.
 start_link(Id, Supervisor, Args, Context) ->
+    StateContext = state_context(Args, Context),
     gen_server:start_link(
-      {via, z_proc, {{?MODULE, Id}, Context}}, ?MODULE, [Id, Supervisor, Args, Context], []).
+      {via, z_proc, {{?MODULE, Id}, Context}}, ?MODULE, [Id, Supervisor, Args, StateContext], []).
 
 
 % @doc Start a renderer.
-start_renderer(TeleviewId, Args, Context) ->
+start_renderer(TeleviewId, VaryArgs, Context) ->
     gen_server:call({via, z_proc, {{?MODULE, TeleviewId}, Context}},
-                    {start_renderer, Args, Context}).
+                    {start_renderer, VaryArgs}).
 
 % @doc Tell the teleview state process to keep the renderer alive
 keep_alive(TeleviewId, RendererId, Context) ->
@@ -74,23 +76,12 @@ keep_alive(TeleviewId, RendererId, Context) ->
 %% gen_server callbacks.
 %%
 
-init([Id, Supervisor, #{ topic := Topic }=Args, Context]) ->
+init([Id, Supervisor, #{ topics := Topics }=Args, Context]) ->
     process_flag(trap_exit, true),
 
     self() ! get_renderers_sup_pid,
 
-    %% Subscribe to event topic.
-    case z_mqtt:subscribe(Topic, Context) of
-        ok ->
-            ok;
-        {error, _}=Error ->
-            % log warning
-            z:warning("Teleview could not subscribe to topic: ~p, reason: ~p",
-                      [Topic, Error],
-                      [{module, ?MODULE}, {line, ?LINE}],
-                      Context),
-            ok
-    end,
+    subscribe(Topics, Context),
 
     m_teleview:publish_event(started, Id, #{ }, Context),
 
@@ -98,15 +89,14 @@ init([Id, Supervisor, #{ topic := Topic }=Args, Context]) ->
         
     {ok, #state{id=Id, teleview_supervisor=Supervisor, args=Args, context=Context}}.
 
-handle_call({start_renderer, Args, RenderContext}, _From,
+handle_call({start_renderer, VaryArgs}, _From,
             #state{renderers_supervisor=RenderersSup,
                    args=TeleviewArgs}=State) when is_pid(RenderersSup) ->
 
-    RenderArgs = maps:merge(Args, TeleviewArgs),
+    RenderArgs = maps:merge(TeleviewArgs, VaryArgs),
     RendererId = erlang:phash2(RenderArgs),
 
-    case supervisor:start_child(RenderersSup, [RendererId, RenderArgs,
-                                               z_context:prune_for_async(RenderContext)]) of
+    case supervisor:start_child(RenderersSup, [RendererId, RenderArgs, State#state.context]) of 
         {ok, Pid} ->
             MonitorRef = erlang:monitor(process, Pid),
             Renderers1 = maps:put(Pid, #{renderer_id => RendererId,
@@ -115,7 +105,7 @@ handle_call({start_renderer, Args, RenderContext}, _From,
             RendererState = #{teleview_id => State#state.id, renderer_id  => RendererId},
             {reply, {ok, RendererState}, State#state{no_renderers_count=0, renderers=Renderers1}};
         {error, {already_started, _Pid}} ->
-            RendererState = z_teleview_differ:state(State#state.id, RendererId, RenderContext),
+            RendererState = z_teleview_differ:state(State#state.id, RendererId, State#state.context),
             {reply, {ok, RendererState}, State#state{no_renderers_count=0}};
         {error, Error} ->
             {reply, {error, {could_not_start, Error}}, State}
@@ -206,7 +196,7 @@ handle_info({'DOWN', _MonitorRef, process, Pid, Reason}, #state{renderers=Render
 
 handle_info({mqtt_msg, Msg}, State) ->
     %% Trigger a render on all renderers.
-    Args1 = case z_notifier:first({pre_teleview_render, State#state.id, Msg, State#state.args}, State#state.context) of
+    Args1 = case z_notifier:first({teleview_render, State#state.id, Msg, State#state.args}, State#state.context) of
                 undefined -> State#state.args;
                 NewArgs when is_map(NewArgs) -> NewArgs
             end,
@@ -231,6 +221,31 @@ code_change(_OldVsn, State, _Extra) ->
 %%
 %% Helpers
 %%
+
+state_context(Args, Context) ->
+    case z_notifier:first({teleview_state_init, Args}, Context) of
+        undefined ->
+            z_acl:anondo(Context);
+        #context{} = NewContext ->
+            NewContext
+    end.
+
+subscribe([], _Context) ->
+    ok;
+subscribe([Topic|Rest], Context) ->
+    %% Subscribe to event topic.
+    case z_mqtt:subscribe(Topic, Context) of
+        ok ->
+            ok;
+        {error, _}=Error ->
+            % log warning
+            z:warning("Teleview could not subscribe to topic: ~p, reason: ~p",
+                      [Topic, Error],
+                      [{module, ?MODULE}, {line, ?LINE}],
+                      Context),
+            ok
+    end,
+    subscribe(Rest, Context).
 
 
 trigger_check() ->

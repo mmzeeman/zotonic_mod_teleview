@@ -29,38 +29,48 @@ vary(_Params, _Context) -> nocache.
 %% Make a place for the view to land and setup the worker which
 %% is going to manage the view.
 
-render(Params, Vars, Context) ->
-    Args = maps:from_list(Params),
+render(Params, _Vars, Context) ->
+    Topics = proplists:get_all_values(topic, Params),
+    Vary = proplists:get_value(vary, Params),
 
-    case z_notifier:first({ensure_teleview, Args}, Context) of
-        undefined ->
-            {error, {no_teleview, Args}};
+    Args = maps:from_list(z_utils:prop_delete(topic, z_utils:prop_delete(vary, Params))),
+    Args1 = maps:put(topics, Topics, Args),
+
+    case mod_teleview:start_teleview(Args1, Context) of
         {error, _E}=Error ->
             {error, Error};
-        {ok, RenderState} ->
-            Id = z_ids:identifier(),
-
-            RenderState1 = maps:put(uiId, Id, RenderState),
-
-            CurrentFrame = maps:get(current_frame, RenderState1, <<>>),
-
-            JSArgs = case maps:get(min_time, RenderState1, undefined) of
-                         0 ->
-                             Opts = maps:without([current_frame, current_frame_sn], RenderState1),
-                             z_utils:js_object(maps:to_list(Opts), Context);
-                         _ ->
-                             z_utils:js_object(maps:to_list(RenderState1), Context)
-                     end,
-
-            Div = z_tags:render_tag(<<"div">>, [{<<"id">>, Id}], [ CurrentFrame ]),
-
-            %% TODO: initialization needs own model/namespace
-            Script = z_tags:render_tag(<<"script">>, [], [
-                <<"cotonic.ready.then(function() {">>,
-                    <<"initTeleviewer(">>, JSArgs, <<");">>, 
-                <<"});">>
-            ]),
-
-            {ok, [Div, Script]}
+        {ok, TeleviewId} ->
+            {ok, RenderState} = mod_teleview:start_renderer(TeleviewId, Vary, Context),
+            render_teleview(RenderState, Context)
     end.
+
+%%
+%% Helpers
+%%
+
+render_teleview(RenderState, Context) ->
+    Id = z_ids:identifier(),
+
+    RenderState1 = maps:put(uiId, Id, RenderState),
+
+    CurrentFrame = maps:get(current_frame, RenderState1, <<>>),
+
+    JSArgs = case maps:get(min_time, RenderState1, undefined) of
+                 0 ->
+                     Opts = maps:without([current_frame, current_frame_sn], RenderState1),
+                     z_utils:js_object(maps:to_list(Opts), Context);
+                 _ ->
+                     z_utils:js_object(maps:to_list(RenderState1), Context)
+             end,
+
+    Div = z_tags:render_tag(<<"div">>, [{<<"id">>, Id}], [ CurrentFrame ]),
+
+    %% TODO: initialization needs own model/namespace
+    Script = z_tags:render_tag(<<"script">>, [], [
+                                                  <<"cotonic.ready.then(function() {">>,
+                                                  <<"initTeleviewer(">>, JSArgs, <<");">>, 
+                                                  <<"});">>
+                                                 ]),
+
+    {ok, [Div, Script]}.
 

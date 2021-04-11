@@ -59,7 +59,7 @@ start_link(Args) ->
 % @doc start_teleview without giving an explicit Id. The Id will be generated.
 start_teleview(Args, Context) ->
     %% Make an id using the arguments of the teleview. When the topic, or
-    %% template is changed, this will result in a new teleview.
+    %% or anything else is changed, this will result in a new teleview.
     Id = erlang:phash2(Args),
     start_teleview(Id, Args, Context).
 
