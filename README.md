@@ -13,14 +13,19 @@ update its part of the dom-tree.
 
 # Add a teleview to a page
 
-
 ```
 {% teleview 
        type = "<type-name>"
-       args = %{id: id,
-                template: "_a_template.tpl",
-                topic: <topic to listen to>
-              }
+       template = "_a_template.tpl"
+       
+       topic = <an mqtt topic to listen to>
+       
+       teleview_param = ...
+       
+       vary = %{
+           renderer_param: x
+           ... 
+       }
 %}
 ```
 
@@ -36,7 +41,8 @@ html output of the teleview scomp.
 A piece of javascript code will subscribe itself to the update topic of the teleview renderer. This will keep
 the view updated.
 
-# How to implement a teleview.
+
+# How to implement a Teleview.
 
 Put a teleview scomp into your tempate
 
@@ -53,20 +59,36 @@ Put a teleview scomp into your tempate
 %}
 ```
 
-Add an observe function to start the teleview and the renderer. This function should ensure the teleview,
-and a renderer is started which 
+In the above example a teleview will be started with the parameters given. 
+
+A teleview process will subscribe itself to the supplied topics, and a
+renderer process will be started. It will take care of rendering and sending
+updates to the client side viewer.
+
+Each renderer can have different parameters so they can render the interface
+in different languages, for different users, or with a special set of acl 
+settings.
+
+In order to support that two different notifications can be setup on the 
+server side.
 
 ```erlang
 
--export([observe_ensure_teleview/2]).
-
-observe_ensure_teleview({ensure_teleview, #{ type := <<"example">> }=Args}, Context) ->
-    % 
-
-observe_ensure_teleview(_Ensure, _Context) ->
+observe_teleview_state_init({teleview_state_init, #{ type := <<"example">> }=Args}, Context) ->
+    %% Return a context which is allowed to subscribe the topics.
+    Context;
+observe_teleview_state_init(_InitArgs, _Context) ->
     undefined.
-
+    
+observe_teleview_state_init({teleview_renderer_init, #{ type := <<"example">> }=Args}, Context) ->
+    %% Return a context which is allowed to subscribe the topics.
+    Context;
+observe_teleview_renderer_init(_InitArgs, _Context) ->
+    undefined.
 ```
+    
+
+
 
 # Technical Details
 
