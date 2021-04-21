@@ -81,7 +81,7 @@ init([Id, Supervisor, #{ topics := Topics }=Args, Context]) ->
 
     self() ! get_renderers_sup_pid,
 
-    subscribe(Topics, Context),
+    ok = subscribe(Topics, Context),
 
     m_teleview:publish_event(started, Id, #{ }, Context),
 
@@ -236,16 +236,15 @@ subscribe([Topic|Rest], Context) ->
     %% Subscribe to event topic.
     case z_mqtt:subscribe(Topic, Context) of
         ok ->
-            ok;
+            subscribe(Rest, Context);
         {error, _}=Error ->
             % log warning
             z:warning("Teleview could not subscribe to topic: ~p, reason: ~p",
                       [Topic, Error],
                       [{module, ?MODULE}, {line, ?LINE}],
                       Context),
-            ok
-    end,
-    subscribe(Rest, Context).
+            Error
+    end.
 
 
 trigger_check() ->
