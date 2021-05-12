@@ -75,6 +75,7 @@ renderer_context(Args, Context) ->
         undefined ->
             z_acl:anondo(Context);
         #context{} = NewContext ->
+            ?DEBUG({got_context, Args, z_acl:user(NewContext)}),
             NewContext
     end.
 
