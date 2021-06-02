@@ -105,6 +105,11 @@ handle_call({start_renderer, VaryArgs}, _From,
                                          last_check => z_utils:now(), 
                                          monitor_ref => MonitorRef}, State#state.renderers),
             RendererState = #{teleview_id => State#state.id, renderer_id  => RendererId},
+
+            %% Trigger a render on the renderer which was just started with the argument used
+            %% for rendereing the last time.
+            z_teleview_render:render(State#state.id, RendererId, State#state.args, State#state.context),
+
             {reply, {ok, RendererState}, State#state{no_renderers_count=0, renderers=Renderers1}};
         {error, {already_started, _Pid}} ->
             RendererState = z_teleview_differ:state(State#state.id, RendererId, State#state.context),
