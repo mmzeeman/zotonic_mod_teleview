@@ -52,6 +52,7 @@
 -export([
     start_link/4,
     new_frame/2,
+    sync_new_frame/2,
 
     state/3
 ]).
@@ -74,6 +75,8 @@ start_link(TeleviewId, RendererId, Args, Context) ->
 new_frame(Pid, NewFrame) ->
     gen_server:call(Pid, {new_frame, NewFrame}).
 
+sync_new_frame(Pid, NewFrame) ->
+    gen_server:call(Pid, {sync_new_frame, NewFrame}).
 
 state(TeleviewId, RendererId, Context) ->
     gen_server:call({via, z_proc, {{?MODULE, TeleviewId, RendererId}, Context}},
@@ -107,18 +110,13 @@ handle_call({new_frame, Frame}, _From, #state{processing=false}=State) ->
             {reply, ok, State}
     end;
 
-handle_call(state, _From, State) ->
-    DifferState = #{keyframe => State#state.keyframe,
-                    keyframe_sn => State#state.keyframe_sn,
-                    current_frame => State#state.current_frame,
-                    current_frame_sn => State#state.current_frame_sn,
-                    min_time => State#state.min_time,
-                    max_time => State#state.max_time,
-                    teleview_id => State#state.teleview_id,
-                    renderer_id => State#state.renderer_id
-                   },
+handle_call({sync_new_frame, Frame}, _From, #state{}=State) ->
+    {_Patch, State1} = next_patch(Frame, State),
+    {reply, differ_state(State1), State1#state{processing=false, new_frame=undefined}};
 
-    {reply, DifferState, State};
+
+handle_call(state, _From, State) ->
+    {reply, differ_state(State), State};
 
 handle_call(keyframe, _From, State) ->
     {reply, State#state.keyframe, State};
@@ -307,4 +305,16 @@ patch_to_list([{skip, N} | Rest], Acc) ->
     patch_to_list(Rest, [N, s | Acc]);
 patch_to_list([{insert, Bin} | Rest], Acc) ->
     patch_to_list(Rest, [Bin, i | Acc]).
+
+
+differ_state(#state{}=State) ->
+    #{keyframe => State#state.keyframe,
+      keyframe_sn => State#state.keyframe_sn,
+      current_frame => State#state.current_frame,
+      current_frame_sn => State#state.current_frame_sn,
+      min_time => State#state.min_time,
+      max_time => State#state.max_time,
+      teleview_id => State#state.teleview_id,
+      renderer_id => State#state.renderer_id
+     }.
 

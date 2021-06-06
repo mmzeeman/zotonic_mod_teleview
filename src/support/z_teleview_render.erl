@@ -29,7 +29,9 @@
     start_link/5,
 
     render/3,
-    render/4
+    render/4,
+
+    sync_render/4
 ]).
 
 -define(MAX_DIFF_TRIES, 3).
@@ -71,6 +73,10 @@ render(Pid, Args, _Context) when is_pid(Pid) ->
 render(TeleviewId, RendererId, Args, Context) ->
     gen_server:call({via, z_proc, {{?MODULE, TeleviewId, RendererId}, Context}}, {render, Args}).
 
+% Do a render and wait for the result from the differ. Return the differ state.
+sync_render(TeleviewId, RendererId, Args, Context) ->
+    gen_server:call({via, z_proc, {{?MODULE, TeleviewId, RendererId}, Context}}, {sync_render, Args}).
+
 %%
 %% gen_server callbacks.
 %%
@@ -102,6 +108,15 @@ handle_call({render, Args}, _From, #state{processing = false}=State) ->
                   render_result = undefined,
                   render_args = Args,
                   processing = true}};
+
+
+handle_call({sync_render, Args}, _From, #state{}=State) ->
+    RenderResult = render(Args, State),
+    DifferState = z_teleview_differ:sync_new_frame(State#state.differ_pid, RenderResult),
+    State1 = State#state{diff_tries = 0, render_result = undefined, render_args=undefined, processing=false},
+    {reply, DifferState, State1};
+
+
 handle_call(Msg, _From, State) ->
     {stop, {unknown_call, Msg}, State}.
 

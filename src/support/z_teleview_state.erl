@@ -82,9 +82,7 @@ init([Id, Supervisor, #{ topics := Topics }=Args, Context]) ->
     self() ! get_renderers_sup_pid,
 
     ok = subscribe(Topics, Context),
-
     m_teleview:publish_event(started, Id, #{ }, Context),
-
     trigger_check(),
         
     {ok, #state{id=Id, teleview_supervisor=Supervisor, args=Args, context=Context}}.
@@ -104,12 +102,10 @@ handle_call({start_renderer, VaryArgs}, _From,
             Renderers1 = maps:put(Pid, #{renderer_id => RendererId,
                                          last_check => z_utils:now(), 
                                          monitor_ref => MonitorRef}, State#state.renderers),
-            RendererState = #{teleview_id => State#state.id, renderer_id  => RendererId},
 
-            %% Trigger a render on the renderer which was just started with the argument used
-            %% for rendereing the last time.
-            z_teleview_render:render(State#state.id, RendererId, State#state.args, State#state.context),
-
+            %% Trigger a synchronized render, and return the renderstate so it can be 
+            %% put on the page immediately
+            RendererState = z_teleview_render:sync_render(State#state.id, RendererId, State#state.args, State#state.context),
             {reply, {ok, RendererState}, State#state{no_renderers_count=0, renderers=Renderers1}};
         {error, {already_started, _Pid}} ->
             RendererState = z_teleview_differ:state(State#state.id, RendererId, State#state.context),
