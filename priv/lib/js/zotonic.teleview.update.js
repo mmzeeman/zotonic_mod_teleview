@@ -6,6 +6,10 @@
  */
 
 function initTeleviewer(state) {
+    // Special attribute handler for incremental dom which allows it to ignore the open
+    // attribute used for the <details> element.
+    IncrementalDOM.attributes["open"] = function(el, name, value) { };
+
     const uiInsertTopic = cotonic.mqtt.fill("model/ui/insert/+uiId", {uiId: state.uiId});
     const uiUpdateTopic = cotonic.mqtt.fill("model/ui/update/+uiId", {uiId: state.uiId});
 
@@ -23,13 +27,17 @@ function initTeleviewer(state) {
         min_time: state.min_time,
 
         current_text: function() {
-            let t = decoder.decode(tvState.current_frame);
-            return t;
+            if(tvState.current_frame) 
+                return decoder.decode(tvState.current_frame);
+
+            return decoder.decode(tvState.keyframe);
         },
 
         encoder: encoder,
         decoder: decoder,
     };
+
+    console.log(tvState);
 
     /*
      */
@@ -53,8 +61,6 @@ function initTeleviewer(state) {
 
     cotonic.broker.subscribe(televiewEventTopic,
         function(m, a) {
-            console.log("teleview event", a, m);
-
             switch(a.evt_type) {
                 case "stopped": 
                     // [TODO] Maybe update a state class on the wrapper div here.
