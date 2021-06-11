@@ -37,8 +37,6 @@ function initTeleviewer(state) {
         decoder: decoder,
     };
 
-    console.log(tvState);
-
     /*
      */
     cotonic.broker.publish(
