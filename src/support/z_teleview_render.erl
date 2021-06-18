@@ -89,6 +89,8 @@ init([Supervisor, TeleviewId, RendererId, #{template := Template}=Args, Context]
     Args1 = Args#{teleview_id => TeleviewId,
                   renderer_id => RendererId},
 
+    z_depcache:in_process(true),
+
     {ok, #state{template=Template,
                 args=Args1,
                 render_context=Context}}.
@@ -185,7 +187,9 @@ diff_wait_time(N) ->
 render(Args, #state{template=Template, args=RenderArgs, render_context=Context}) ->
     Args1 = merge_args(RenderArgs, Args),
     {IOList, _Context} = z_template:render_to_iolist(Template, Args1, Context),
-    z_convert:to_binary(IOList).
+    Result = z_convert:to_binary(IOList),
+    z_depcache:flush_process_dict(),
+    Result.
 
  
 % Get the pid of the differ from the supervisor.
