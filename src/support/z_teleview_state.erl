@@ -66,7 +66,7 @@ start_link(Id, Supervisor, Args, Context) ->
 % @doc Start a renderer.
 start_renderer(TeleviewId, VaryArgs, Context) ->
     gen_server:call({via, z_proc, {{?MODULE, TeleviewId}, Context}},
-                    {start_renderer, VaryArgs}).
+                    {start_renderer, VaryArgs, z_context:prune_for_async(Context)}).
 
 % @doc Tell the teleview state process to keep the renderer alive
 keep_alive(TeleviewId, RendererId, Context) ->
@@ -87,7 +87,7 @@ init([Id, Supervisor, #{ topics := Topics }=Args, Context]) ->
         
     {ok, #state{id=Id, teleview_supervisor=Supervisor, args=Args, context=Context}}.
 
-handle_call({start_renderer, VaryArgs}, _From,
+handle_call({start_renderer, VaryArgs, Context}, _From,
             #state{renderers_supervisor=RenderersSup,
                    args=TeleviewArgs}=State) when is_pid(RenderersSup) ->
 
@@ -96,7 +96,7 @@ handle_call({start_renderer, VaryArgs}, _From,
     %% Generate a stable renderer id from the id of the teleview and the vary args of the renderer
     RendererId = erlang:phash2({renderer, State#state.id, VaryArgs}),
 
-    case supervisor:start_child(RenderersSup, [RendererId, RenderArgs, State#state.context]) of 
+    case supervisor:start_child(RenderersSup, [RendererId, RenderArgs, Context]) of 
         {ok, Pid} ->
             MonitorRef = erlang:monitor(process, Pid),
             Renderers1 = maps:put(Pid, #{renderer_id => RendererId,
@@ -105,10 +105,10 @@ handle_call({start_renderer, VaryArgs}, _From,
 
             %% Trigger a synchronized render, and return the renderstate so it can be 
             %% put on the page immediately
-            RendererState = z_teleview_render:sync_render(State#state.id, RendererId, State#state.args, State#state.context),
+            RendererState = z_teleview_render:sync_render(State#state.id, RendererId, State#state.args, Context),
             {reply, {ok, RendererState}, State#state{no_renderers_count=0, renderers=Renderers1}};
         {error, {already_started, _Pid}} ->
-            RendererState = z_teleview_differ:state(State#state.id, RendererId, State#state.context),
+            RendererState = z_teleview_differ:state(State#state.id, RendererId, Context),
             {reply, {ok, RendererState}, State#state{no_renderers_count=0}};
         {error, Error} ->
             {reply, {error, {could_not_start, Error}}, State}
