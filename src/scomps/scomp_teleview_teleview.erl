@@ -36,8 +36,6 @@ render(Params, _Vars, Context) ->
     Args = maps:from_list(z_utils:prop_delete(topic, z_utils:prop_delete(vary, Params))),
     Args1 = maps:put(topics, Topics, Args),
 
-    ?DEBUG(z_context:language(Context)),
-
     case mod_teleview:start_teleview(Args1, Context) of
         {error, _E}=Error ->
             {error, Error};
