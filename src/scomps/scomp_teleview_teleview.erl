@@ -41,36 +41,46 @@ render(Params, _Vars, Context) ->
             {error, Error};
         {ok, TeleviewId} ->
             {ok, RenderState} = mod_teleview:start_renderer(TeleviewId, Vary, Context),
-            render_teleview(RenderState, Context)
+            render_teleview(RenderState, Params, Context)
     end.
 
 %%
 %% Helpers
 %%
 
-render_teleview(RenderState, Context) ->
+render_teleview(RenderState, Params, Context) ->
     Id = z_ids:identifier(),
+
+    Context1 = z_context:set_language(undefined, Context),
 
     RenderState1 = maps:put(uiId, Id, RenderState),
 
     CurrentFrame = maps:get(current_frame, RenderState1, <<>>),
 
-    JSArgs = case maps:get(min_time, RenderState1, undefined) of
-                 0 ->
-                     Opts = maps:without([current_frame, current_frame_sn], RenderState1),
-                     z_utils:js_object(maps:to_list(Opts), Context);
-                 _ ->
-                     z_utils:js_object(maps:to_list(RenderState1), Context)
-             end,
+    Args = case maps:get(min_time, RenderState1, undefined) of
+               0 ->
+                   maps:without([current_frame, current_frame_sn], RenderState1);
+               _ ->
+                   RenderState1
+           end,
+    ArgsJSON = z_json:encode(Args),
+
+    SrcUrl = z_lib_include:url([ "lib/js/zotonic.teleview.worker.js" ], Context1),
+    Base = proplists:get_value(base, Params, <<"cotonic/cotonic-worker-bundle.js">>),
+    BaseUrl = z_lib_include:url([ Base ], Context1),
+
+    Name = proplists:get_value(name, Params, Id),
 
     Div = z_tags:render_tag(<<"div">>, [{<<"id">>, Id}], [ CurrentFrame ]),
 
-    %% TODO: initialization needs own model/namespace
-    Script = z_tags:render_tag(<<"script">>, [], [
-                                                  <<"cotonic.ready.then(function() {">>,
-                                                  <<"initTeleviewer(">>, JSArgs, <<");">>, 
-                                                  <<"});">>
-                                                 ]),
+    Spawn = [ <<"cotonic.spawn_named(\"">>, z_utils:js_escape(Name), "\", \"", SrcUrl, "\", \"", BaseUrl, "\",", ArgsJSON, ");" ],
+
+    Script = z_tags:render_tag(<<"script">>, [],
+                               [
+                                <<"cotonic.ready.then(function() {">>,
+                                    Spawn,
+                                <<"});">>
+                               ]),
 
     {ok, [Div, Script]}.
 
