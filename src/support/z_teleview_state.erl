@@ -94,7 +94,7 @@ handle_call({start_renderer, VaryArgs, Context}, _From,
     RenderArgs = maps:merge(TeleviewArgs, VaryArgs),
 
     %% Generate a stable renderer id from the id of the teleview and the vary args of the renderer
-    RendererId = erlang:phash2({renderer, State#state.id, VaryArgs}),
+    RendererId = mod_teleview:renderer_id(State#state.id, VaryArgs),
 
     case supervisor:start_child(RenderersSup, [RendererId, RenderArgs, Context]) of 
         {ok, Pid} ->

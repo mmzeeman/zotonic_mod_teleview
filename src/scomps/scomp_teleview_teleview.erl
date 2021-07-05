@@ -41,7 +41,8 @@ render(Params, _Vars, Context) ->
             {error, Error};
         {ok, TeleviewId} ->
             {ok, RenderState} = mod_teleview:start_renderer(TeleviewId, Vary, Context),
-            render_teleview(RenderState, Params, Context)
+            Pickle = z_utils:pickle(#{ args => Args1, vary => Vary }, Context), 
+            render_teleview(maps:put(pickle, Pickle, RenderState), Params, Context)
     end.
 
 %%
@@ -51,6 +52,7 @@ render(Params, _Vars, Context) ->
 render_teleview(RenderState, Params, Context) ->
     Id = z_ids:identifier(),
 
+    %% Remove the language, to remove the lang element from the urls generated below.
     Context1 = z_context:set_language(undefined, Context),
 
     RenderState1 = maps:put(uiId, Id, RenderState),

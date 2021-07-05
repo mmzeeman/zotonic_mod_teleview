@@ -36,6 +36,8 @@ model.present = function(proposal) {
     if(proposal.is_start) {
         const arg = proposal.arg;
 
+        model.pickle = arg.pickle;
+
         model.teleview_id = arg.teleview_id;
         model.renderer_id = arg.renderer_id;
 
@@ -50,8 +52,10 @@ model.present = function(proposal) {
         model.current_frame = (model.current_frame===undefined) ? undefined : model.encoder.encode(model.current_frame);
         model.current_frame_sn =  model.current_frame_sn;
 
-        model.max_time = arg.max_time,
-        model.min_time = arg.min_time,
+        model.max_time = arg.max_time;
+        model.min_time = arg.min_time;
+
+        console.log(model);
 
         /* */
         self.publish(
@@ -67,7 +71,7 @@ model.present = function(proposal) {
         const rendererEventTopic = televiewEventTopic + "/" + model.renderer_id + "/#args";
 
         self.subscribe(televiewEventTopic, actions.televiewEvent);
-        self.subscribe(rendererEventTopic, actions.renderEvent);
+        self.subscribe(rendererEventTopic, actions.rendererEvent);
     }
 
     if(proposal.is_update) {
@@ -84,7 +88,6 @@ model.present = function(proposal) {
 
                 break;
             case "incremental": // Patch against the current frame.
-
                 if(!model.current_frame) {
                     console.log("waiting for current frame");
                 } else {
@@ -131,16 +134,22 @@ model.present = function(proposal) {
         model.current_frame_sn = 0;
     }
 
-    if(proposal.is_still_watching && model.uiUpdateTopic) {
+    if(proposal.is_still_watching && model.updateTopic) {
         self.publish(
             cotonic.mqtt.fill("bridge/origin/model/teleview/post/+teleview_id/still_watching/+renderer_id", model),
             {});
     }
 
-    if(proposal.is_stop && model.uiUpdateTopic) {
+    if(proposal.is_stop && model.updateTopic) {
         self.publish(model.uiUpdateTopic, "<p>Teleview stopped</p>");
 
         // [TODO] I think the worker can be stopped now.
+    }
+
+    // Check if the server side still exists
+    if(proposal.is_ensure_server_side && model.updateTopic) {
+        console.log("call teleview ensure");
+        self.call("bridge/origin/model/teleview/get/ensure", model.pickle).then(actions.handleEnsureStatus);
     }
 
     state.render(model);
@@ -180,7 +189,7 @@ actions.televiewEvent = function(m, a) {
     }
 }
 
-actions.renderEvent = function(m, a) {
+actions.rendererEvent = function(m, a) {
     switch(a.evt_type) {
         case "update":
             actions.update(a.args[0], m.payload);
@@ -218,6 +227,14 @@ actions.start = function(args) {
     model.present( {is_start: true, arg: args[0] } );
 }
 
+actions.ensureServerSide = function() {
+    model.present({is_ensure_server_side: true});
+}
+
+actions.handleEnsureStatus = function(m, a) {
+    console.log(m);
+    model.present({is_ensure_server_status: true, arg: m.payload});
+}
 
 /**
  * Helpers

@@ -41,11 +41,16 @@
 
     start_renderer/3,
 
+    ensure_renderer/5,
+
     render/3,
     render/4,
 
     teleview_count/1,
-    renderer_count/1
+    renderer_count/1,
+
+    teleview_id/1,
+    renderer_id/2
 ]).
 
 -define(SERVER, ?MODULE).
@@ -55,12 +60,23 @@ start_link(Args) ->
     supervisor:start_link(
       {local, z_utils:name_for_site(?SERVER, Context)}, ?MODULE, Args).
 
+% @doc Generate a teleview id from the provided arguments
+teleview_id(Args) ->
+    erlang:phash2(Args).
+
+% @doc Generate a renderer id from the teleview_id and the provided arguments
+renderer_id(TeleviewId, Args) ->
+    erlang:phash2({renderer, TeleviewId, Args}).
+
 
 % @doc start_teleview without giving an explicit Id. The Id will be generated.
 start_teleview(Args, Context) ->
     %% Make an id using the arguments of the teleview. When the topic, or
     %% or anything else is changed, this will result in a new teleview.
-    Id = erlang:phash2(Args),
+
+    ?DEBUG(Args),
+
+    Id = teleview_id(Args),
     start_teleview(Id, Args, Context).
 
 % @doc start_teleview starts a new teleview with the given Id.
@@ -101,6 +117,22 @@ start_renderer(TeleviewId, Args, Context) ->
         Error ->
             Error 
     end.
+
+% @doc make sure the teleview and renderer are running. Possibly starting new ones 
+% with the provided args.
+ensure_renderer(TeleviewId, RendererId, Args, Vary, Context) ->
+    case start_teleview(TeleviewId, Args, Context) of
+        {ok, TeleviewId} ->
+            case start_renderer(TeleviewId, Vary, Context) of
+                {ok, #{ renderer_id := RendererId, teleview_id := TeleviewId} = RendererState} ->
+                    RendererState;
+                _ ->
+                    {error, renderer_start_problem}
+            end;
+        _ ->
+            {error, teleview_start_problem}
+    end.
+
 
 % @doc Trigger a render of a specific renderer of a teleview.
 render(TeleviewId, RendererId, Context) -> 

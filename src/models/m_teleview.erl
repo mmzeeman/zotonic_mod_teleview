@@ -54,6 +54,18 @@
 %% model/teleview/event/<teleview-id>/update/<renderer-id>/incremental : a patch against the current frame.
 %%
 
+m_get([<<"ensure">>|Rest], Msg, Context) ->
+    %% Make sure the renderer and teleview are running, and maybe restart the teleview or renderer.
+    ?DEBUG({ensure, Msg}),
+
+    Payload = maps:get(payload, Msg),
+    ?DEBUG(Payload),
+    case ensure_renderer(Payload, Context) of
+        {error, _R}=Error -> Error;
+        Result ->
+            {ok, {Result, Rest}}
+    end;
+
 m_get(V, _Msg, _Context) ->
     lager:info("Unknown ~p lookup: ~p", [?MODULE, V]),
     {error, unknown_path}.
@@ -80,4 +92,20 @@ publish_event(Event, TeleviewId, RendererId, Msg, Context) ->
 publish_event(Event, SubEvent, TeleviewId, RendererId, Msg, Context) ->
     z_mqtt:publish([model, teleview, event, TeleviewId, Event, RendererId, SubEvent], Msg, z_acl:sudo(Context)).
 
+
+% @doc Make sure the teleview and renderer are running. When they are not, use 
+% the pickle to restart the teleview and/or renderer.
+ensure_renderer(Pickle, Context) ->
+    %% Is the teleview running
+    case catch z_utils:depickle(Pickle, Context) of
+        {checksum_invalid, _} ->
+            invalid;
+        #{ args := Args, vary := Vary } ->
+            TeleviewId = mod_teleview:teleview_id(Args),
+            RendererId = mod_teleview:renderer_id(TeleviewId, Vary),
+
+            mod_teleview:ensure_renderer(TeleviewId, RendererId, Args, Vary, Context);
+       _ ->
+            unknown
+    end.
 
