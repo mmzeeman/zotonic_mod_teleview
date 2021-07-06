@@ -4,25 +4,36 @@
  *
  */
 
-const model = {
-    teleview_id: undefined,
-    renderer_id: undefined,
 
-    updateTopic: undefined,
+function initialState() {
+    return {
+        teleview_id: undefined,
+        renderer_id: undefined,
 
-    keyframe: undefined,
-    keyframe_sn: undefined,
+        updateTopic: undefined,
 
-    current_frame: undefined,
-    current_frame_sn: undefined,
+        keyframe: undefined,
+        keyframe_sn: undefined,
 
-    max_time: undefined,
-    min_time: undefined,
+        current_frame: undefined,
+        current_frame_sn: undefined,
 
-    encoder: undefined,
-    decoder: undefined
-};
+        max_time: undefined,
+        min_time: undefined,
 
+        encoder: undefined,
+        decoder: undefined,
+
+        pending_server_status_request: false,
+        stop: false,
+
+        page_state: "active",
+        hidden_start_time: undefined,
+        need_server_side_check: false
+    };
+}
+
+const model = initialState();
 const view = {};
 const state = {};
 const actions = {};
@@ -49,13 +60,11 @@ model.present = function(proposal) {
         model.keyframe = model.encoder.encode(arg.keyframe);
         model.keyframe_sn = arg.keyframe_sn;
 
-        model.current_frame = (model.current_frame===undefined) ? undefined : model.encoder.encode(model.current_frame);
-        model.current_frame_sn =  model.current_frame_sn;
+        model.current_frame = (arg.current_frame === undefined) ? undefined : model.encoder.encode(arg.current_frame);
+        model.current_frame_sn = model.current_frame_sn;
 
         model.max_time = arg.max_time;
         model.min_time = arg.min_time;
-
-        console.log(model);
 
         /* */
         self.publish(
@@ -67,11 +76,12 @@ model.present = function(proposal) {
             }
         );
 
-        const televiewEventTopic = "bridge/origin/model/teleview/event/" + model.teleview_id + "/+evt_type";
-        const rendererEventTopic = televiewEventTopic + "/" + model.renderer_id + "/#args";
+        self.publish("model/teleview/" + model.televiewId + "/event/started", true);
 
-        self.subscribe(televiewEventTopic, actions.televiewEvent);
-        self.subscribe(rendererEventTopic, actions.rendererEvent);
+        self.subscribe(televiewEventTopic(model), actions.televiewEvent);
+        self.subscribe(rendererEventTopic(model), actions.rendererEvent);
+
+        self.subscribe("model/lifecycle/event/state", actions.lifecycleEvent);
     }
 
     if(proposal.is_update) {
@@ -141,15 +151,69 @@ model.present = function(proposal) {
     }
 
     if(proposal.is_stop && model.updateTopic) {
-        self.publish(model.uiUpdateTopic, "<p>Teleview stopped</p>");
+        self.publish(model.updateTopic, "<p>Teleview stopped</p>");
 
-        // [TODO] I think the worker can be stopped now.
+        // [TODO] maybe stop the worker.
+
+        self.unsubscribe(televiewEventTopic(model), actions.televiewEvent);
+        self.unsubscribe(rendererEventTopic(model), actions.rendererEvent);
+        
+        self.publish("model/teleview/" + model.televiewId + "/event/stopped", true);
+
+        model = initialState();
     }
 
     // Check if the server side still exists
-    if(proposal.is_ensure_server_side && model.updateTopic) {
-        console.log("call teleview ensure");
-        self.call("bridge/origin/model/teleview/get/ensure", model.pickle).then(actions.handleEnsureStatus);
+    if(proposal.is_ensure_server_side && !model.pending_server_status_request && model.updateTopic) {
+        self.call("bridge/origin/model/teleview/get/ensure", model.pickle).then(
+            actions.handleEnsureStatus,
+            actions.errorEnsureStatus
+        );
+
+        model.need_server_side_check = false;
+        model.pending_server_status_request = true;
+    }
+
+    // Got a result from the server status. 
+    if(proposal.is_ensure_server_status && model.pending_server_status_request) {
+        model.pending_server_status_request = false;
+
+        const arg = proposal.arg;
+
+        model.keyframe = model.encoder.encode(arg.keyframe);
+        model.keyframe_sn = arg.keyframe_sn;
+
+        model.current_frame = (arg.current_frame === undefined) ? undefined : model.encoder.encode(arg.current_frame);
+        model.current_frame_sn = arg.current_frame_sn  
+
+        model.max_time = arg.max_time;
+        model.min_time = arg.min_time;
+
+        self.publish(model.updateTopic, model.decoder.decode(model.current_frame));
+    }
+
+    if(proposal.is_ensure_server_status_error && model.pending_server_status_request) {
+        model.pending_server_status_request = false;
+
+        model.stop = true;
+    }
+
+    if(proposal.is_lifecycle_event) {
+        if(model.page_state === "passive" && proposal.state === "hidden") {
+            model.hidden_start_time = Date.now(); 
+        }
+
+        if(model.page_state === "hidden" && proposal.state === "passive") {
+            const now = Date.now();
+
+            if(model.hidden_start_time !== undefined && ((now - model.hidden_start_time) > 300000)) {
+                model.need_server_side_check = true;
+            }
+
+            model.hidden_start_time = undefined;
+        }
+
+        model.page_state = proposal.state;
     }
 
     state.render(model);
@@ -177,6 +241,13 @@ state.representation = function(model) {
 }
 
 state.nextAction = function(model) {
+    if(model.stop && model.updateTopic) {
+        actions.stop();
+    }
+
+    if(model.need_server_side_check) {
+        actions.ensureServerSide();
+    }
 }
 
 /**
@@ -232,14 +303,44 @@ actions.ensureServerSide = function() {
 }
 
 actions.handleEnsureStatus = function(m, a) {
-    console.log(m);
-    model.present({is_ensure_server_status: true, arg: m.payload});
+    if(m.payload && m.payload.status === "ok") {
+        model.present({
+            is_ensure_server_status: true,
+            arg: m.payload.result
+        });
+    } else {
+        model.present({
+            is_ensure_server_status_error: true,
+            arg: m.payload
+        });
+    }
+   }
+
+actions.errorEnsureStatus = function(m, a) {
+    model.present({
+        is_ensure_server_status_error: true,
+        arg: m.payload
+    });
+}
+
+actions.lifecycleEvent = function(m, a) {
+    model.present({
+        is_lifecycle_event: true,
+        state: m.payload
+    });
 }
 
 /**
  * Helpers
  */
 
+function televiewEventTopic(model) {
+    return "bridge/origin/model/teleview/event/" + model.teleview_id + "/+evt_type";
+}
+
+function rendererEventTopic(model) {
+    return televiewEventTopic(model) + "/" + model.renderer_id + "/#args";
+}
 
 function applyPatch(source, update, encoder) {
     if(update.patch.length === 0)

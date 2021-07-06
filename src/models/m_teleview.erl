@@ -56,12 +56,10 @@
 
 m_get([<<"ensure">>|Rest], Msg, Context) ->
     %% Make sure the renderer and teleview are running, and maybe restart the teleview or renderer.
-    ?DEBUG({ensure, Msg}),
-
     Payload = maps:get(payload, Msg),
-    ?DEBUG(Payload),
     case ensure_renderer(Payload, Context) of
-        {error, _R}=Error -> Error;
+        {error, _R}=Error ->
+            Error;
         Result ->
             {ok, {Result, Rest}}
     end;
@@ -96,16 +94,16 @@ publish_event(Event, SubEvent, TeleviewId, RendererId, Msg, Context) ->
 % @doc Make sure the teleview and renderer are running. When they are not, use 
 % the pickle to restart the teleview and/or renderer.
 ensure_renderer(Pickle, Context) ->
-    %% Is the teleview running
+    %% Make sure the teleview is running.
     case catch z_utils:depickle(Pickle, Context) of
-        {checksum_invalid, _} ->
-            invalid;
         #{ args := Args, vary := Vary } ->
             TeleviewId = mod_teleview:teleview_id(Args),
             RendererId = mod_teleview:renderer_id(TeleviewId, Vary),
 
             mod_teleview:ensure_renderer(TeleviewId, RendererId, Args, Vary, Context);
+        {checksum_invalid, _} ->
+            {error, invalid};
        _ ->
-            unknown
+            {error, unknown}
     end.
 
