@@ -68,7 +68,7 @@ render_teleview(RenderState, Params, Context) ->
     ArgsJSON = z_json:encode(Args),
 
     SrcUrl = z_lib_include:url([ "lib/js/zotonic.teleview.worker.js" ], Context1),
-    Base = proplists:get_value(base, Params, <<"cotonic/cotonic-worker-bundle.js">>),
+    Base = proplists:get_value(base, Params, <<"cotonic/cotonic-worker.js">>),
     BaseUrl = z_lib_include:url([ Base ], Context1),
 
     Name = proplists:get_value(name, Params, Id),
