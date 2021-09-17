@@ -66,7 +66,7 @@ start_link(Id, Supervisor, Args, Context) ->
 % @doc Start a renderer.
 start_renderer(TeleviewId, VaryArgs, Context) ->
     gen_server:call({via, z_proc, {{?MODULE, TeleviewId}, Context}},
-                    {start_renderer, VaryArgs, z_context:prune_for_async(Context)}).
+                    {start_renderer, VaryArgs, z_context:prune_for_scomp(Context)}).
 
 % @doc Tell the teleview state process to keep the renderer alive
 keep_alive(TeleviewId, RendererId, Context) ->
@@ -82,7 +82,9 @@ init([Id, Supervisor, #{ topics := Topics }=Args, Context]) ->
     self() ! get_renderers_sup_pid,
 
     ok = subscribe(Topics, Context),
+
     m_teleview:publish_event(started, Id, #{ }, Context),
+
     trigger_check(),
         
     {ok, #state{id=Id, teleview_supervisor=Supervisor, args=Args, context=Context}}.
@@ -137,8 +139,13 @@ handle_cast(Msg, State) ->
 
 handle_info(check, #state{renderers=Renderers, no_renderers_count=N}=State)
   when map_size(Renderers) =:= 0 andalso N > ?MAX_NO_RENDERERS_COUNT ->
-    mod_teleview:stop_teleview(State#state.id, State#state.context),
-    {noreply, State};
+
+    F = fun() ->
+              ok = mod_teleview:stop_teleview(State#state.id, State#state.context)
+        end,
+    spawn(F),
+
+    {stop, normal, State};
 handle_info(check, #state{renderers=Renderers, renderers_supervisor=Sup}=State) ->
     Now = z_utils:now(),
 
@@ -246,7 +253,9 @@ subscribe([Topic|Rest], Context) ->
                       [Topic, Error],
                       [{module, ?MODULE}, {line, ?LINE}],
                       Context),
-            Error
+
+            %% Keep on trying to subscribe to the other topics
+            subscribe(Rest, Context)
     end.
 
 

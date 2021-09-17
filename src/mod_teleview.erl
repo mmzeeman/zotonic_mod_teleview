@@ -73,15 +73,12 @@ renderer_id(TeleviewId, Args) ->
 start_teleview(Args, Context) ->
     %% Make an id using the arguments of the teleview. When the topic, or
     %% or anything else is changed, this will result in a new teleview.
-
-    ?DEBUG(Args),
-
     Id = teleview_id(Args),
     start_teleview(Id, Args, Context).
 
 % @doc start_teleview starts a new teleview with the given Id.
 start_teleview(Id, #{ template := _Template } = Args, Context) ->
-    AsyncContext = z_context:prune_for_async(Context),
+    AsyncContext = z_context:prune_for_scomp(Context),
 
     case supervisor:start_child(z_utils:name_for_site(?SERVER, Context), [Id, Args, AsyncContext]) of
         {ok, _Pid} ->
