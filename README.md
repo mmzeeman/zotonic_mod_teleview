@@ -80,8 +80,8 @@ observe_teleview_state_init({teleview_state_init, #{ type := <<"example">> }=Arg
 observe_teleview_state_init(_InitArgs, _Context) ->
     undefined.
     
-observe_teleview_state_init({teleview_renderer_init, #{ type := <<"example">> }=Args}, Context) ->
-    %% Return a context which is allowed to subscribe the topics.
+observe_teleview_renderer_init({teleview_renderer_init, #{ type := <<"example">> }=Args}, Context) ->
+    %% Return a context which allows rendering things.
     Context;
 observe_teleview_renderer_init(_InitArgs, _Context) ->
     undefined.
