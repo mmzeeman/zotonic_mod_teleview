@@ -165,10 +165,12 @@ model.present = function(proposal) {
 
     // Check if the server side still exists
     if(proposal.is_ensure_server_side && !model.pending_server_status_request && model.updateTopic) {
-        self.call("bridge/origin/model/teleview/get/ensure", model.pickle).then(
-            actions.handleEnsureStatus,
-            actions.errorEnsureStatus
-        );
+        self.call(
+            cotonic.mqtt.fill("bridge/origin/model/teleview/get/+teleview_id/state/+renderer_id", model),
+            model.pickle).then(
+                actions.handleEnsureStatus,
+                actions.errorEnsureStatus
+            );
 
         model.need_server_side_check = false;
         model.pending_server_status_request = true;

@@ -39,7 +39,7 @@
 %%
 %% Interface update topics:
 %%
-%% model/teleview/get/<teleview-id>/state/<renderer-id>
+%% model/teleview/get/<teleview-id>/state/<renderer-id> : Get the state of the renderer, ensures that it is running.
 %%
 %% model/teleview/post/<teleview-id>/still-watching/<renderer-id>      : Indicate that the viewer is still watching.
 %%
@@ -49,15 +49,19 @@
 %%
 %% model/teleview/event/<teleview-id>/reset/<renderer-id>              : The viewer must be reset. Wait for new keyframe.
 %% model/teleview/event/<teleview-id>/still-watching/<renderer-id>     : Reply to keep renderer alive
-%% model/teleview/event/<teleview-id>/update/<renderer-id>/keyframe    : keyframe update.
-%% model/teleview/event/<teleview-id>/update/<renderer-id>/cumulative  : a patch against the last keyframe.
-%% model/teleview/event/<teleview-id>/update/<renderer-id>/incremental : a patch against the current frame.
+%% model/teleview/event/<teleview-id>/update/<renderer-id>/keyframe    : A keyframe update, update the entire view.
+%% model/teleview/event/<teleview-id>/update/<renderer-id>/cumulative  : Patch against the last keyframe and update view.
+%% model/teleview/event/<teleview-id>/update/<renderer-id>/incremental : Patch against the current frame and update view.
 %%
 
-m_get([<<"ensure">>|Rest], Msg, Context) ->
-    %% Make sure the renderer and teleview are running, and maybe restart the teleview or renderer.
+m_get([Teleview, <<"state">>, Renderer | Rest], Msg, Context) ->
     Payload = maps:get(payload, Msg),
-    case ensure_renderer(Payload, Context) of
+
+    TeleviewId = z_convert:to_integer(Teleview),
+    RendererId = z_convert:to_integer(Renderer),
+
+    % [TODO] acl check
+    case ensure_renderer(TeleviewId, RendererId, Payload, Context) of
         {error, _R}=Error ->
             Error;
         Result ->
@@ -68,11 +72,12 @@ m_get(V, _Msg, _Context) ->
     lager:info("Unknown ~p lookup: ~p", [?MODULE, V]),
     {error, unknown_path}.
 
-m_post([Teleview, <<"still_watching">>, Renderer | Rest], Msg, Context) ->
+m_post([Teleview, <<"still_watching">>, Renderer | _Rest], _Msg, Context) ->
+    % [TODO] acl check
     z_teleview_state:keep_alive(z_convert:to_integer(Teleview),
                                 z_convert:to_integer(Renderer), Context),
     ok;
-m_post(Topic, Msg, Context) ->
+m_post(Topic, _Msg, _Context) ->
     ?DEBUG(Topic),
 
     ok.
@@ -93,14 +98,19 @@ publish_event(Event, SubEvent, TeleviewId, RendererId, Msg, Context) ->
 
 % @doc Make sure the teleview and renderer are running. When they are not, use 
 % the pickle to restart the teleview and/or renderer.
-ensure_renderer(Pickle, Context) ->
+ensure_renderer(TeleviewId, RendererId, Pickle, Context) ->
     %% Make sure the teleview is running.
     case catch z_utils:depickle(Pickle, Context) of
         #{ args := Args, vary := Vary } ->
-            TeleviewId = mod_teleview:teleview_id(Args),
-            RendererId = mod_teleview:renderer_id(TeleviewId, Vary),
+            TId = mod_teleview:teleview_id(Args),
+            RId = mod_teleview:renderer_id(TeleviewId, Vary),
 
-            mod_teleview:ensure_renderer(TeleviewId, RendererId, Args, Vary, Context);
+            case TId =:= TeleviewId andalso RId =:= RendererId of
+                true ->
+                    mod_teleview:ensure_renderer(TeleviewId, RendererId, Args, Vary, Context);
+                false ->
+                    {error, invalid}
+            end;
         {checksum_invalid, _} ->
             {error, invalid};
        _ ->
