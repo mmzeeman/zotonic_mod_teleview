@@ -58,9 +58,9 @@
 
 % @doc Start the state process.
 start_link(Id, Supervisor, Args, Context) ->
-    StateContext = state_context(Args, Context),
+    {Args1, Context1} = state_context(Args, Context),
     gen_server:start_link(
-      {via, z_proc, {{?MODULE, Id}, Context}}, ?MODULE, [Id, Supervisor, Args, StateContext], []).
+      {via, z_proc, {{?MODULE, Id}, Context}}, ?MODULE, [Id, Supervisor, Args1, Context1], []).
 
 
 % @doc Start a renderer.
@@ -82,6 +82,7 @@ init([Id, Supervisor, #{ topics := Topics }=Args, Context]) ->
     self() ! get_renderers_sup_pid,
 
     ok = subscribe(Topics, Context),
+    ok = setup_tick(Args),
 
     m_teleview:publish_event(started, Id, #{ }, Context),
 
@@ -204,19 +205,16 @@ handle_info({'DOWN', _MonitorRef, process, Pid, Reason}, #state{renderers=Render
             {noreply, State#state{renderers=Renderers1}}
     end;
 
+handle_info({tick, Interval}, State) ->
+    try
+        handle_render(#{ tick => Interval }, State)
+    after
+        trigger_tick(Interval)
+    end;
+
 handle_info({mqtt_msg, Msg}, State) ->
-    %% Trigger a render on all renderers.
-    Args1 = case z_notifier:first({teleview_render, State#state.id, Msg, State#state.args}, State#state.context) of
-                undefined -> State#state.args;
-                NewArgs when is_map(NewArgs) -> NewArgs
-            end,
+    handle_render(Msg, State);
 
-    trigger_render(State#state.id,
-                   State#state.renderers,
-                   Args1,
-                   State#state.context),
-
-    {noreply, State#state{args=Args1}};
 handle_info(Info, State) ->
     ?DEBUG(Info),
     {noreply, State}.
@@ -232,12 +230,31 @@ code_change(_OldVsn, State, _Extra) ->
 %% Helpers
 %%
 
+handle_render(Msg, State) ->
+    %% Trigger a render on all renderers.
+    Args1 = case z_notifier:first({teleview_render, State#state.id, Msg, State#state.args}, State#state.context) of
+                undefined -> State#state.args;
+                NewArgs when is_map(NewArgs) -> NewArgs
+            end,
+
+    trigger_render(State#state.id,
+                   State#state.renderers,
+                   Args1,
+                   State#state.context),
+
+    {noreply, State#state{args=Args1}}.
+
+
 state_context(Args, Context) ->
     case z_notifier:first({teleview_state_init, Args}, Context) of
         undefined ->
-            z_acl:anondo(Context);
-        #context{} = NewContext ->
-            NewContext
+            {Args, z_acl:anondo(Context)};
+        #context{}=Context1 ->
+            {Args, Context1};
+        {ok, #context{}=Context1} ->
+            {Args, Context1};
+        {ok, #{}=Args1, #context{}=Context1} ->
+            {Args1, Context1}
     end.
 
 subscribe([], _Context) ->
@@ -258,6 +275,14 @@ subscribe([Topic|Rest], Context) ->
             subscribe(Rest, Context)
     end.
 
+setup_tick(#{ tick := Tick }) ->
+    trigger_tick(Tick);
+setup_tick(#{ }) ->
+    ok.
+
+trigger_tick(TickInterval) ->
+    _ = erlang:send_after(TickInterval, self(), {tick, TickInterval}),
+    ok.
 
 trigger_check() ->
     erlang:send_after(?INTERVAL_MSEC, self(), check).
