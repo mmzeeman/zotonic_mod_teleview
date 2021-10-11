@@ -68,9 +68,12 @@
 %% 
 
 start_link(TeleviewId, RendererId, Args, Context) -> 
+    %% Use a new empty context for the differ to make the 
+    %% published updates smaller.
+    DifferContext = z_context:new(Context),
     gen_server:start_link({via, z_proc, {{?MODULE, TeleviewId, RendererId}, Context}},
                           ?MODULE,
-                          [TeleviewId, RendererId, Args, Context], []).
+                          [TeleviewId, RendererId, Args, DifferContext], []).
   
 new_frame(Pid, NewFrame) ->
     gen_server:call(Pid, {new_frame, NewFrame}).
@@ -210,8 +213,8 @@ do_cumulative_patch(NewFrame, Patch, #state{}=State) ->
     %% must be included too.
     State1 = update_state(NewFrame, State),
     {{cumulative, #{ patch => patch_to_list(Patch),
-                     keyframe_sn => State#state.keyframe_sn,
-                     current_frame_sn => State#state.current_frame_sn,
+                     keyframe_sn => State1#state.keyframe_sn,
+                     current_frame_sn => State1#state.current_frame_sn,
                      result_size => size(NewFrame)
                    }},
      State1}.
@@ -236,8 +239,8 @@ do_complex_patch(NewFrame, #state{}=State) ->
             Patch = make_patch(State#state.current_frame, NewFrame),
             State1 = update_state(NewFrame, State),
             {{incremental, #{ patch => patch_to_list(Patch),
-                              keyframe_sn => State#state.keyframe_sn,
-                              current_frame_sn => State#state.current_frame_sn,
+                              keyframe_sn => State1#state.keyframe_sn,
+                              current_frame_sn => State1#state.current_frame_sn,
                               result_size => size(NewFrame)
                             }},
              State1}
@@ -266,11 +269,10 @@ make_patch(SourceText, DestinationText) ->
     CleanedDiffs = diffy:cleanup_efficiency(Diffs),
     diffy_simple_patch:make_patch(CleanedDiffs).
 
-
 is_complexity_too_high(Diffs, Doc) ->
     Size = size(Doc),
     EstimatedSize = estimate_size(Diffs),
-    ?PATCH_OVERHEAD + (EstimatedSize * 2) > Size.
+    ?PATCH_OVERHEAD + (EstimatedSize * 1.5)  > Size.
 
 estimate_size(Diffs) ->
     estimate_size(Diffs, 0).

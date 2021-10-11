@@ -4,7 +4,6 @@
  *
  */
 
-
 function initialState() {
     return {
         teleview_id: undefined,
@@ -61,7 +60,7 @@ model.present = function(proposal) {
         model.keyframe_sn = arg.keyframe_sn;
 
         model.current_frame = (arg.current_frame === undefined) ? undefined : model.encoder.encode(arg.current_frame);
-        model.current_frame_sn = model.current_frame_sn;
+        model.current_frame_sn = arg.current_frame_sn;
 
         model.max_time = arg.max_time;
         model.min_time = arg.min_time;
@@ -101,13 +100,13 @@ model.present = function(proposal) {
                 if(!model.current_frame) {
                     console.log("waiting for current frame");
                 } else {
-                    if(model.current_frame_sn === proposal.update.current_frame_sn) {
+                    if(model.current_frame_sn + 1=== proposal.update.current_frame_sn) {
                         model.current_frame = applyPatch(model.current_frame, proposal.update, model.encoder);
                         model.current_frame_sn = proposal.update.current_frame_sn;
 
                         self.publish(model.updateTopic, model.decoder.decode(model.current_frame));
                     } else {
-                        console.log("Incremental patch does not match current frame sn");
+                        console.log("Incremental patch does not match current frame sn", model.current_frame_sn, proposal.update.current_frame_sn);
                     }
                 }
 
