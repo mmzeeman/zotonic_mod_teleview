@@ -194,7 +194,6 @@ handle_info(get_renderers_sup_pid, State) ->
 
 handle_info({'DOWN', _MonitorRef, process, Pid, Reason}, #state{renderers=Renderers}=State) ->
     %% A renderer died.
-    %%
     case maps:get(Pid, Renderers, undefined) of
         undefined ->
             {noreply, State};
@@ -215,8 +214,7 @@ handle_info({tick, Interval}, State) ->
 handle_info({mqtt_msg, Msg}, State) ->
     handle_render(Msg, State);
 
-handle_info(Info, State) ->
-    ?DEBUG(Info),
+handle_info(_Info, State) ->
     {noreply, State}.
 
 terminate(Reason, State) ->

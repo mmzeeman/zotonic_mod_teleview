@@ -31,7 +31,7 @@ vary(_Params, _Context) -> nocache.
 
 render(Params, _Vars, Context) ->
     Topics = proplists:get_all_values(topic, Params),
-    Vary = proplists:get_value(vary, Params),
+    Vary = proplists:get_value(vary, Params, #{}),
 
     Args = maps:from_list(z_utils:prop_delete(topic, z_utils:prop_delete(vary, Params))),
     Args1 = maps:put(topics, Topics, Args),
