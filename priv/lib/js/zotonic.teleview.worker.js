@@ -56,7 +56,7 @@ model.present = function(proposal) {
         model.encoder = new TextEncoder();
         model.decoder = new TextDecoder();
 
-        model.keyframe = model.encoder.encode(arg.keyframe);
+        model.keyframe = (arg.keyframe === undefined) ? undefined : model.encoder.encode(arg.keyframe);
         model.keyframe_sn = arg.keyframe_sn;
 
         model.current_frame = (arg.current_frame === undefined) ? undefined : model.encoder.encode(arg.current_frame);

@@ -185,11 +185,13 @@ diff_wait_time(N) ->
 
 % Render the template with the supplied vars and send the result to the differ.
 render(Args, #state{template=Template, args=RenderArgs, render_context=Context}) ->
-    Args1 = merge_args(RenderArgs, Args),
-    {IOList, _Context} = z_template:render_to_iolist(Template, Args1, Context),
-    Result = z_convert:to_binary(IOList),
-    z_depcache:flush_process_dict(),
-    Result.
+    try
+        Args1 = merge_args(RenderArgs, Args),
+        {IOList, _Context} = z_template:render_to_iolist(Template, Args1, Context),
+        z_convert:to_binary(IOList)
+    after 
+        z_depcache:flush_process_dict()
+    end.
 
  
 % Get the pid of the differ from the supervisor.

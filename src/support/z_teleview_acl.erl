@@ -174,7 +174,7 @@ is_entry_found(Key, Entry, Context) ->
     end.
 
 table_name(Context) ->
-    list_to_atom("teleview$" ++ atom_to_list(z_context:site(Context))).
+    z_utils:name_for_site(?MODULE, Context).      
 
 acl_key(Context) ->
     case z_context:session_id(Context) of

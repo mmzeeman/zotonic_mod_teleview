@@ -25,7 +25,12 @@
     start_link/4,
     start_renderer/3,
 
-    keep_alive/3
+    keep_alive/3,
+
+    init_table/1,
+    store_current_frame/5,
+    store_keyframe/5,
+    delete_frames/3
 ]).
 
 % gen_server callbacks
@@ -71,6 +76,41 @@ start_renderer(TeleviewId, VaryArgs, Context) ->
 % @doc Tell the teleview state process to keep the renderer alive
 keep_alive(TeleviewId, RendererId, Context) ->
     gen_server:cast({via, z_proc, {{?MODULE, TeleviewId}, Context}}, {keep_alive, RendererId}).
+
+
+%%
+%% Teleview Ets State. This table is shared by all televiews.
+%%
+
+init_table(Context) ->
+    Table = table_name(Context),
+    ets:new(Table, [named_table, set, {keypos, 1},
+                    public,
+                    {write_concurrency, true},
+                    {read_concurrency, true}]).
+
+
+table_name(Context) ->
+    z_utils:name_for_site(?MODULE, Context).
+
+
+% @doc Store the current frame of a renderer.
+store_current_frame(TeleviewId, RendererId, Frame, Sn, Context) ->
+    Table = table_name(Context),
+    ets:insert(Table, {{current_frame, TeleviewId, RendererId}, Frame, Sn}).
+
+% @doc Store the keyframe of a renderer.
+store_keyframe(TeleviewId, RendererId, Frame, Sn, Context) ->
+    Table = table_name(Context),
+    ets:insert(Table, {{keyframe, TeleviewId, RendererId}, Frame, Sn}).
+
+% @doc Remove the current and keyframe of a renderer.
+delete_frames(TeleviewId, RendererId, Context) ->
+    Table = table_name(Context),
+    ets:delete(Table, {current_frame, TeleviewId, RendererId}),
+    ets:delete(Table, {keyframe, TeleviewId, RendererId}),
+    ok.
+
 
 %%
 %% gen_server callbacks.

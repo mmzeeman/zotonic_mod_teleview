@@ -41,6 +41,7 @@ render(Params, _Vars, Context) ->
             {error, Error};
         {ok, TeleviewId} ->
             {ok, RenderState} = mod_teleview:start_renderer(TeleviewId, Vary, Context),
+
             Pickle = z_utils:pickle(#{ args => Args1, vary => Vary }, Context), 
             render_teleview(maps:put(pickle, Pickle, RenderState), Params, Context)
     end.

@@ -43,7 +43,6 @@
 %%
 %% model/teleview/post/<teleview-id>/still-watching/<renderer-id>      : Indicate that the viewer is still watching.
 %%
-%%
 %% model/teleview/event/<teleview-id>/stopped                          : The whole teleview is stopped. (e.g. when all renderers are gone) 
 %% model/teleview/event/<teleview-id>/started                          : The teleview is started. 
 %%

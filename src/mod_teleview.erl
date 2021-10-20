@@ -183,6 +183,7 @@ init(Args) ->
               {module, ?MODULE}
              ]),
 
+    z_teleview_state:init_table(Context),
     z_teleview_acl:init_table(Context),
 
     TeleviewSpec = #{id => z_teleview_sup,
