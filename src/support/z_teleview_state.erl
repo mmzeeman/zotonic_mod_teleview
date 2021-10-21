@@ -29,7 +29,11 @@
 
     init_table/1,
     store_current_frame/5,
+    get_current_frame/3,
+
     store_keyframe/5,
+    get_keyframe/3, 
+
     delete_frames/3
 ]).
 
@@ -99,10 +103,31 @@ store_current_frame(TeleviewId, RendererId, Frame, Sn, Context) ->
     Table = table_name(Context),
     ets:insert(Table, {{current_frame, TeleviewId, RendererId}, Frame, Sn}).
 
+get_current_frame(TeleviewId, RendererId, Context) ->
+    Table = table_name(Context),
+    case ets:lookup(Table, {current_frame, TeleviewId, RendererId}) of
+        [] ->
+            undefined;
+        [{_Key, Frame, Sn}] ->
+            #{ current_frame => Frame,
+               current_frame_sn => Sn }
+    end.
+
 % @doc Store the keyframe of a renderer.
 store_keyframe(TeleviewId, RendererId, Frame, Sn, Context) ->
     Table = table_name(Context),
     ets:insert(Table, {{keyframe, TeleviewId, RendererId}, Frame, Sn}).
+
+get_keyframe(TeleviewId, RendererId, Context) ->
+    Table = table_name(Context),
+    case ets:lookup(Table, {keyframe, TeleviewId, RendererId}) of
+        [] ->
+            undefined;
+        [{_Key, Frame, Sn}] ->
+            #{ keyframe => Frame,
+               keyframe_sn => Sn }
+    end.
+
 
 % @doc Remove the current and keyframe of a renderer.
 delete_frames(TeleviewId, RendererId, Context) ->

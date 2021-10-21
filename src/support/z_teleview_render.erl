@@ -100,7 +100,7 @@ handle_call({render, Args}, _From, #state{processing = true}=State) ->
     %%
     %% Note, the diff_tries is not updated. It could be that the differ is too
     %% slow, and can't keep up with the pace of the updates.
-    lager:warning("Renderer is waiting for differ, but accepting new render.", []),
+    lager:warning("Renderer is waiting for differ, but accepting new render request.", []),
     {reply, ok, State#state{
                   render_result = undefined,
                   render_args = Args}};

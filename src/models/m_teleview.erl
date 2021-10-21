@@ -67,6 +67,30 @@ m_get([Teleview, <<"state">>, Renderer | Rest], Msg, Context) ->
             {ok, {Result, Rest}}
     end;
 
+%% Request for the keyframe
+m_get([Teleview, <<"keyframe">>, Renderer | Rest], _Msg, Context) ->
+    TeleviewId = z_convert:to_integer(Teleview),
+    RendererId = z_convert:to_integer(Renderer),
+
+    case z_teleview_acl:is_view_allowed(TeleviewId, RendererId, Context) of
+        true ->
+            {ok, {z_teleview_state:get_keyframe(TeleviewId, RendererId, Context), Rest}};
+        false ->
+            {error, eaccess}
+    end;
+
+%% Request for the current frame
+m_get([Teleview, <<"current_frame">>, Renderer | Rest], _Msg, Context) ->
+    TeleviewId = z_convert:to_integer(Teleview),
+    RendererId = z_convert:to_integer(Renderer),
+
+    case z_teleview_acl:is_view_allowed(TeleviewId, RendererId, Context) of
+        true ->
+            {ok, {z_teleview_state:get_current_frame(TeleviewId, RendererId, Context), Rest}};
+        false ->
+            {error, eaccess}
+    end;
+
 m_get(V, _Msg, _Context) ->
     lager:info("Unknown ~p lookup: ~p", [?MODULE, V]),
     {error, unknown_path}.

@@ -29,6 +29,8 @@
     ensure_renderer_access/3,
     ensure_renderer_access/4,
 
+    is_view_allowed/3,
+
     is_event_subscribe_allowed/2,
     is_event_subscribe_allowed/3
 ]).
@@ -64,6 +66,12 @@ ensure_renderer_access(TeleviewId, RendererId, Context) ->
 
 ensure_renderer_access(Key, TeleviewId, RendererId, Context) ->
     ensure_entry(Key, renderer_entry(TeleviewId, RendererId), Context).
+
+
+%%
+is_view_allowed(TeleviewId, RendererId, Context) ->
+    Key = acl_key(Context),
+    is_entry_found(Key, renderer_entry(TeleviewId, RendererId), Context).
 
 
 %% Subscribe on the teleview event topic
