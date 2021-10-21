@@ -32,7 +32,7 @@ function initialState() {
     };
 }
 
-const model = initialState();
+let model = initialState();
 const view = {};
 const state = {};
 const actions = {};
