@@ -1,5 +1,5 @@
 %% @author Maas-Maarten Zeeman <mmzeeman@xs4all.nl>
-%% @copyright 2019 Maas-Maarten Zeeman
+%% @copyright 2019-2021 Maas-Maarten Zeeman
 %% @doc Put a teleview on the page.
 
 %% Copyright 2019-2021 Maas-Maarten Zeeman
@@ -41,9 +41,9 @@ render(Params, _Vars, Context) ->
             {error, Error};
         {ok, TeleviewId} ->
             {ok, RenderState} = mod_teleview:start_renderer(TeleviewId, Vary, Context),
-
+            RenderState1 = maps:without([keyframe, keyframe_sn, current_frame, current_frame_sn], RenderState),
             Pickle = z_utils:pickle(#{ args => Args1, vary => Vary }, Context), 
-            render_teleview(maps:put(pickle, Pickle, RenderState), Params, Context)
+            render_teleview(maps:put(pickle, Pickle, RenderState1), Params, Context)
     end.
 
 %%
