@@ -50,7 +50,7 @@ render(Params, _Vars, Context) ->
 %% Helpers
 %%
 
-render_teleview(RenderState, Params, Context) ->
+render_teleview(#{ teleview_id := TeleviewId, renderer_id := RendererId }=RenderState, Params, Context) ->
     Id = z_ids:identifier(),
 
     %% Remove the language, to remove the lang element from the urls generated below.
@@ -58,7 +58,12 @@ render_teleview(RenderState, Params, Context) ->
 
     RenderState1 = maps:put(uiId, Id, RenderState),
 
-    CurrentFrame = maps:get(current_frame, RenderState1, <<>>),
+    CurrentFrame = case z_teleview_state:get_current_frame(TeleviewId, RendererId, Context) of
+                       #{ current_frame := Frame } ->
+                           Frame;
+                       _ ->
+                           <<>>
+                   end,
 
     Args = case maps:get(min_time, RenderState1, undefined) of
                0 ->

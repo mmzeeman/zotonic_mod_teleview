@@ -119,12 +119,13 @@ store_keyframe(TeleviewId, RendererId, Frame, Sn, Context) ->
     ets:insert(Table, {{keyframe, TeleviewId, RendererId}, Frame, Sn}).
 
 get_keyframe(TeleviewId, RendererId, Context) ->
+    ?DEBUG({keyframe, TeleviewId, RendererId}),
     Table = table_name(Context),
     case ets:lookup(Table, {keyframe, TeleviewId, RendererId}) of
         [] ->
             undefined;
         [{_Key, Frame, Sn}] ->
-            #{ keyframe => Frame,
+            #{ frame => Frame,
                keyframe_sn => Sn }
     end.
 
