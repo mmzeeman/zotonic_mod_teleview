@@ -37,13 +37,12 @@ render(Params, _Vars, Context) ->
     Args1 = maps:put(topics, Topics, Args),
 
     case mod_teleview:start_teleview(Args1, Context) of
-        {error, _E}=Error ->
-            {error, Error};
         {ok, TeleviewId} ->
-            {ok, RenderState} = mod_teleview:start_renderer(TeleviewId, Vary, Context),
-            RenderState1 = maps:without([keyframe, keyframe_sn, current_frame, current_frame_sn], RenderState),
+            {ok, RendererId} = mod_teleview:start_renderer(TeleviewId, Vary, Context),
             Pickle = z_utils:pickle(#{ args => Args1, vary => Vary }, Context), 
-            render_teleview(maps:put(pickle, Pickle, RenderState1), Params, Context)
+            render_teleview(maps:put(pickle, Pickle, #{ teleview_id => TeleviewId, renderer_id => RendererId }), Params, Context);
+        {error, _E}=Error ->
+            {error, Error}
     end.
 
 %%
@@ -53,10 +52,16 @@ render(Params, _Vars, Context) ->
 render_teleview(#{ teleview_id := TeleviewId, renderer_id := RendererId }=RenderState, Params, Context) ->
     Id = z_ids:identifier(),
 
-    %% Remove the language, to remove the lang element from the urls generated below.
     Context1 = z_context:set_language(undefined, Context),
 
-    RenderState1 = maps:put(uiId, Id, RenderState),
+    Args = maps:put(uiId, Id, RenderState),
+
+    SrcUrl = z_lib_include:url([ "lib/js/zotonic.teleview.worker.js" ], Context1),
+    Base = proplists:get_value(base, Params, <<"cotonic/cotonic-worker.js">>),
+
+    BaseUrl = z_lib_include:url([ Base ], Context1),
+
+    Name = proplists:get_value(name, Params, Id),
 
     CurrentFrame = case z_teleview_state:get_current_frame(TeleviewId, RendererId, Context) of
                        #{ current_frame := Frame } ->
@@ -65,22 +70,8 @@ render_teleview(#{ teleview_id := TeleviewId, renderer_id := RendererId }=Render
                            <<>>
                    end,
 
-    Args = case maps:get(min_time, RenderState1, undefined) of
-               0 ->
-                   maps:without([current_frame, current_frame_sn], RenderState1);
-               _ ->
-                   RenderState1
-           end,
     ArgsJSON = z_json:encode(Args),
-
-    SrcUrl = z_lib_include:url([ "lib/js/zotonic.teleview.worker.js" ], Context1),
-    Base = proplists:get_value(base, Params, <<"cotonic/cotonic-worker.js">>),
-    BaseUrl = z_lib_include:url([ Base ], Context1),
-
-    Name = proplists:get_value(name, Params, Id),
-
     Div = z_tags:render_tag(<<"div">>, [{<<"id">>, Id}], [ CurrentFrame ]),
-
     Spawn = [ <<"cotonic.spawn_named(\"">>, z_utils:js_escape(Name), "\", \"", SrcUrl, "\", \"", BaseUrl, "\",", ArgsJSON, ");" ],
 
     Script = z_tags:render_tag(<<"script">>, [],

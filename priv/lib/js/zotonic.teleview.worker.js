@@ -121,17 +121,11 @@ model.present = function(proposal) {
                 model.isCurrentFrameRequested = false;
 
                 if(model.current_frame_sn === undefined || proposal.update.current_frame_sn > model.current_frame_sn) {
-                    console.log("new current", proposal.update.current_frame_sn);
-
                     model.current_frame = model.encoder.encode(proposal.update.current_frame);
                     model.current_frame_sn = proposal.update.current_frame_sn;
 
-                    console.log("patch queue", model.incrementalPatchQueue.length);
-
                     while(model.incrementalPatchQueue.length) {
                         const p = model.incrementalPatchQueue.shift();
-
-                        console.log("patch", p);
 
                         if(model.current_frame_sn + 1 !== p.current_frame_sn) continue; // skip
 
@@ -335,8 +329,6 @@ actions.rendererEvent = function(m, a) {
 }
 
 actions.update = function (type, update) {
-    console.log("update", type, update);
-
     model.present({
         is_update: true,
         type: type,
@@ -394,9 +386,6 @@ actions.lifecycleEvent = function(m, a) {
 
 actions.keyframeResponse = function(m) {
     const p = m.payload;
-
-    console.log("keyframe", m);
-
     if(p.status === "ok") {
         model.present({
             type: "keyframe",
@@ -404,14 +393,10 @@ actions.keyframeResponse = function(m) {
             update: p.result
         });
     }
-
 }
 
 actions.currentFrameResponse = function(m) {
     const p = m.payload;
-
-    console.log("current_frame", m);
-
     if(p.status === "ok") {
         model.present({
             type: "current_frame",
@@ -419,8 +404,6 @@ actions.currentFrameResponse = function(m) {
             update: p.result
         });
     }
-
-    console.log("currentFrame", m);
 }
 
 /**

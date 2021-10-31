@@ -114,9 +114,9 @@ handle_call({render, Args}, _From, #state{processing = false}=State) ->
 
 handle_call({sync_render, Args}, _From, #state{}=State) ->
     RenderResult = render(Args, State),
-    DifferState = z_teleview_differ:sync_new_frame(State#state.differ_pid, RenderResult),
+    ok = z_teleview_differ:sync_new_frame(State#state.differ_pid, RenderResult),
     State1 = State#state{diff_tries = 0, render_result = undefined, render_args=undefined, processing=false},
-    {reply, DifferState, State1};
+    {reply, ok, State1};
 
 
 handle_call(Msg, _From, State) ->

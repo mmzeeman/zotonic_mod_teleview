@@ -119,8 +119,7 @@ handle_call({new_frame, Frame}, _From, #state{processing=false}=State) ->
 
 handle_call({sync_new_frame, Frame}, _From, #state{}=State) ->
     {_Patch, State1} = next_patch(Frame, State),
-    {reply, differ_state(State1), State1#state{processing=false, new_frame=undefined}};
-
+    {reply, ok, State1#state{processing=false, new_frame=undefined}};
 
 handle_call(state, _From, State) ->
     {reply, differ_state(State), State};
