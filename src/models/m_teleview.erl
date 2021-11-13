@@ -53,8 +53,14 @@
 %% model/teleview/event/<teleview-id>/update/<renderer-id>/incremental : Patch against the current frame and update view.
 %%
 
+%%
+%% Model Gets
+%%
+
 m_get([Teleview, <<"state">>, Renderer | Rest], Msg, Context) ->
     Payload = maps:get(payload, Msg),
+
+    ?DEBUG(ensure_renderer),
 
     TeleviewId = z_convert:to_integer(Teleview),
     RendererId = z_convert:to_integer(Renderer),
@@ -95,18 +101,26 @@ m_get(V, _Msg, _Context) ->
     lager:info("Unknown ~p lookup: ~p", [?MODULE, V]),
     {error, unknown_path}.
 
-m_post([Teleview, <<"still_watching">>, Renderer | _Rest], _Msg, Context) ->
-    % [TODO] acl check
-    z_teleview_state:keep_alive(z_convert:to_integer(Teleview),
-                                z_convert:to_integer(Renderer), Context),
-    ok;
-m_post(Topic, _Msg, _Context) ->
-    ?DEBUG(Topic),
+%%
+%% Model Posts
+%%
 
-    ok.
+m_post([Teleview, <<"still_watching">>, Renderer | _Rest], _Msg, Context) ->
+    TeleviewId = z_convert:to_integer(Teleview),
+    RendererId = z_convert:to_integer(Renderer),
+
+    case z_teleview_acl:is_view_allowed(TeleviewId, RendererId, Context) of
+        true ->
+            z_teleview_state:keep_alive(TeleviewId, RendererId, Context);
+        false ->
+            {error, eaccess}
+    end;
+m_post(V, _Msg, _Context) ->
+    lager:info("Unknown ~p post: ~p", [?MODULE, V]),
+    {error, unknown_path}.
 
 %%
-%% API
+%% Model Events
 %%
 
 publish_event(Event, TeleviewId, Msg, Context) ->

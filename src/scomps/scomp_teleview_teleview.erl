@@ -39,6 +39,7 @@ render(Params, _Vars, Context) ->
     case mod_teleview:start_teleview(Args1, Context) of
         {ok, TeleviewId} ->
             {ok, RendererId} = mod_teleview:start_renderer(TeleviewId, Vary, Context),
+
             Pickle = z_utils:pickle(#{ args => Args1, vary => Vary }, Context), 
             render_teleview(maps:put(pickle, Pickle, #{ teleview_id => TeleviewId, renderer_id => RendererId }), Params, Context);
         {error, _E}=Error ->
@@ -71,7 +72,11 @@ render_teleview(#{ teleview_id := TeleviewId, renderer_id := RendererId }=Render
                    end,
 
     ArgsJSON = z_json:encode(Args),
-    Div = z_tags:render_tag(<<"div">>, [{<<"id">>, Id}], [ CurrentFrame ]),
+
+    Div = z_tags:render_tag(<<"div">>, [{<<"id">>, Id},
+                                        {<<"data-renderer-id">>, RendererId},
+                                        {<<"data-teleview-id">>, TeleviewId}],
+                            [ CurrentFrame ]),
     Spawn = [ <<"cotonic.spawn_named(\"">>, z_utils:js_escape(Name), "\", \"", SrcUrl, "\", \"", BaseUrl, "\",", ArgsJSON, ");" ],
 
     Script = z_tags:render_tag(<<"script">>, [],
