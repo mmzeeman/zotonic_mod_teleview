@@ -27,7 +27,6 @@ let model = {
     encoder: undefined,
     decoder: undefined,
 
-    pending_server_status_request: false,
     stop: false,
 
     page_state: "active",
@@ -50,12 +49,10 @@ model.present = function(proposal) {
     if(proposal.is_start) {
         const arg = proposal.arg;
 
-        model.pickle = arg.pickle;
-
         model.teleview_id = arg.teleview_id;
         model.renderer_id = arg.renderer_id;
 
-        model.updateTopic = cotonic.mqtt.fill("model/ui/update/+uiId", {uiId: arg.uiId});
+        model.updateTopic = cotonic.mqtt.fill("model/ui/update/+id", {id: arg.id});
 
         model.encoder = new TextEncoder();
         model.decoder = new TextDecoder();
@@ -71,11 +68,11 @@ model.present = function(proposal) {
         model.queuedCumulativePatch = undefined; 
         model.incrementalPatchQueue = [];
 
-        model.max_time = arg.max_time;
-        model.min_time = arg.min_time;
+        model.min_time = (arg.keyframe_min_time === undefined)?0:arg.keyframe_min_time;
+        model.max_time = (arg.keyframe_max_time === undefined)?"infinite":arg.keyframe_max_time;
 
         self.publish(
-            cotonic.mqtt.fill("model/ui/insert/+uiId", arg),
+            cotonic.mqtt.fill("model/ui/insert/+id", arg),
             {
                 initialData: undefined,
                 inner: true,
@@ -170,15 +167,7 @@ model.present = function(proposal) {
 
                     publishCurrentFrame(model);
                 } else {
-                    if(!model.isCurrentFrameRequested) {
-                        model.isCurrentFrameRequested = true;
-                        console.log("request-current-frame");
-                        self.call(
-                            cotonic.mqtt.fill("bridge/origin/model/teleview/get/+teleview_id/current_frame/+renderer_id", model),
-                            undefined,
-                            {qos: 1}).then(actions.currentFrameResponse);
-                    }
-
+                    model.requestCurrentFrame();
                     model.incrementalPatchQueue.push(proposal.update);
                 }
 
@@ -192,9 +181,18 @@ model.present = function(proposal) {
     if(proposal.is_reset) {
         model.keyframe  = undefined;
         model.keyframe_sn = 0;
+        model.isKeyframeRequested = false;
 
         model.current_frame = undefined;
         model.current_frame_sn = 0;
+        model.isCurrentFrameRequested = false;
+
+        model.queuedCumulativePatch = undefined; 
+        model.incrementalPatchQueue = [];
+    }
+
+    if(proposal.is_request_current_frame) {
+        model.requestCurrentFrame();
     }
 
     if(proposal.is_still_watching && model.updateTopic && state.isPageVisible(model)) {
@@ -214,45 +212,6 @@ model.present = function(proposal) {
         self.publish("model/teleview/" + model.televiewId + "/event/stopped", true);
 
         self.exit();
-    }
-
-    // Check if the server side still exists
-    if(proposal.is_ensure_server_side && !model.pending_server_status_request && model.updateTopic) {
-        console.log("ensure-server-side");
-
-        self.call(
-            cotonic.mqtt.fill("bridge/origin/model/teleview/get/+teleview_id/state/+renderer_id", model),
-            model.pickle).then(
-                actions.handleEnsureStatus,
-                actions.errorEnsureStatus
-            );
-
-        model.need_server_side_check = false;
-        model.pending_server_status_request = true;
-    }
-
-    // Got a result from the server status. 
-    if(proposal.is_ensure_server_status && model.pending_server_status_request) {
-        model.pending_server_status_request = false;
-
-        const arg = proposal.arg;
-
-        model.keyframe = model.encoder.encode(arg.keyframe);
-        model.keyframe_sn = arg.keyframe_sn;
-
-        model.current_frame = (arg.current_frame === undefined) ? undefined : model.encoder.encode(arg.current_frame);
-        model.current_frame_sn = arg.current_frame_sn  
-
-        model.max_time = arg.max_time;
-        model.min_time = arg.min_time;
-
-        publishCurrentFrame(model);
-    }
-
-    if(proposal.is_ensure_server_status_error && model.pending_server_status_request) {
-        model.pending_server_status_request = false;
-
-        model.stop = true;
     }
 
     if(proposal.is_lifecycle_event) {
@@ -279,6 +238,19 @@ model.present = function(proposal) {
     }
 
     state.render(model);
+}
+
+model.requestCurrentFrame = function() {
+    if(model.isCurrentFrameRequested)
+        return;
+
+    model.isCurrentFrameRequested = true;
+    self.call(cotonic.mqtt.fill("bridge/origin/model/teleview/get/+teleview_id/current_frame/+renderer_id", model),
+              undefined,
+              {qos: 1})
+        .then(actions.currentFrameResponse)
+        .catch(actions.currentFrameRequestError)
+    ;
 }
 
 function publishCurrentFrame(model) {
@@ -322,7 +294,7 @@ state.nextAction = function(model) {
     }
 
     if(model.need_server_side_check) {
-        actions.ensureServerSide();
+        actions.requestCurrentFrame(true);
     }
 }
 
@@ -360,6 +332,14 @@ actions.update = function (type, update) {
 
 actions.reset = function() {
     model.present({is_reset: true});
+}
+
+
+actions.requestCurrentFrame = function(withReset) {
+    model.present({
+        is_request_current_frame: true,
+        is_reset: true
+    });
 }
 
 actions.stop = function() {
@@ -400,8 +380,6 @@ actions.errorEnsureStatus = function(m, a) {
 }
 
 actions.lifecycleEvent = function(m, a) {
-    console.log("lifecycle", m, model);
-
     model.present({
         is_lifecycle_event: true,
         state: m.payload
@@ -411,7 +389,6 @@ actions.lifecycleEvent = function(m, a) {
 actions.keyframeResponse = function(m) {
     const p = m.payload;
     if(p.status === "ok") {
-        console.log("keyframe-response");
         model.present({
             type: "keyframe",
             is_update: true,
@@ -423,13 +400,16 @@ actions.keyframeResponse = function(m) {
 actions.currentFrameResponse = function(m) {
     const p = m.payload;
     if(p.status === "ok") {
-        console.log("current-frame-response");
         model.present({
             type: "current_frame",
             is_update: true,
             update: p.result
         });
     }
+}
+
+actions.currentFrameRequestError = function(m) {
+    console.log("current_frame request error", m);
 }
 
 /**

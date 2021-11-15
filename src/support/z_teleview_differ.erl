@@ -98,8 +98,8 @@ init([TeleviewId, RendererId, Args, Context]) ->
     % When we restarted because of an error, the viewers should be reset.
     m_teleview:publish_event(reset, TeleviewId, RendererId, #{}, Context),
 
-    {ok, #state{min_time=maps:get(differ_min_time, Args, ?DEFAULT_MIN_TIME),
-                max_time=maps:get(differ_max_time, Args, ?DEFAULT_MAX_TIME),
+    {ok, #state{min_time=maps:get(keyframe_min_time, Args, ?DEFAULT_MIN_TIME),
+                max_time=maps:get(keyframe_max_time, Args, ?DEFAULT_MAX_TIME),
                 teleview_id=TeleviewId,
                 renderer_id=RendererId,
                 context=Context}}.
@@ -120,9 +120,6 @@ handle_call({new_frame, Frame}, _From, #state{processing=false}=State) ->
 handle_call({sync_new_frame, Frame}, _From, #state{}=State) ->
     {_Patch, State1} = next_patch(Frame, State),
     {reply, ok, State1#state{processing=false, new_frame=undefined}};
-
-handle_call(state, _From, State) ->
-    {reply, differ_state(State), State};
 
 handle_call(keyframe, _From, State) ->
     {reply, State#state.keyframe, State};
@@ -318,15 +315,4 @@ patch_to_list([{skip, N} | Rest], Acc) ->
 patch_to_list([{insert, Bin} | Rest], Acc) ->
     patch_to_list(Rest, [Bin, i | Acc]).
 
-
-differ_state(#state{}=State) ->
-    #{keyframe => State#state.keyframe,
-      keyframe_sn => State#state.keyframe_sn,
-      current_frame => State#state.current_frame,
-      current_frame_sn => State#state.current_frame_sn,
-      min_time => State#state.min_time,
-      max_time => State#state.max_time,
-      teleview_id => State#state.teleview_id,
-      renderer_id => State#state.renderer_id
-     }.
 

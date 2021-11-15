@@ -39,9 +39,11 @@ render(Params, _Vars, Context) ->
     case mod_teleview:start_teleview(Args1, Context) of
         {ok, TeleviewId} ->
             {ok, RendererId} = mod_teleview:start_renderer(TeleviewId, Vary, Context),
-
-            Pickle = z_utils:pickle(#{ args => Args1, vary => Vary }, Context), 
-            render_teleview(maps:put(pickle, Pickle, #{ teleview_id => TeleviewId, renderer_id => RendererId }), Params, Context);
+            render_teleview(#{ teleview_id => TeleviewId,
+                               renderer_id => RendererId,
+                               keyframe_min_time => keyframe_min_time(Args1),
+                               keyframe_max_time => keyframe_max_time(Args1) },
+                            Params, Context);
         {error, _E}=Error ->
             {error, Error}
     end.
@@ -51,40 +53,44 @@ render(Params, _Vars, Context) ->
 %%
 
 render_teleview(#{ teleview_id := TeleviewId, renderer_id := RendererId }=RenderState, Params, Context) ->
-    Id = z_ids:identifier(),
-
     Context1 = z_context:set_language(undefined, Context),
-
-    Args = maps:put(uiId, Id, RenderState),
 
     SrcUrl = z_lib_include:url([ "lib/js/zotonic.teleview.worker.js" ], Context1),
     Base = proplists:get_value(base, Params, <<"cotonic/cotonic-worker.js">>),
-
     BaseUrl = z_lib_include:url([ Base ], Context1),
 
-    Name = proplists:get_value(name, Params, Id),
-
-    CurrentFrame = case z_teleview_state:get_current_frame(TeleviewId, RendererId, Context) of
-                       #{ current_frame := Frame } ->
-                           Frame;
-                       _ ->
-                           <<>>
-                   end,
-
-    ArgsJSON = z_json:encode(Args),
-
+    %% Prepare DOM
+    CurrentFrame = current_frame(TeleviewId, RendererId, Context),
+    Id = z_ids:identifier(),
     Div = z_tags:render_tag(<<"div">>, [{<<"id">>, Id},
                                         {<<"data-renderer-id">>, RendererId},
                                         {<<"data-teleview-id">>, TeleviewId}],
                             [ CurrentFrame ]),
+
+    %% Prepare script to start the client side worker which handles
+    %% the teleview.
+    Args = maps:put(id, Id, RenderState),
+    ArgsJSON = z_json:encode(Args),
+    Name = proplists:get_value(name, Params, Id),
     Spawn = [ <<"cotonic.spawn_named(\"">>, z_utils:js_escape(Name), "\", \"", SrcUrl, "\", \"", BaseUrl, "\",", ArgsJSON, ");" ],
 
     Script = z_tags:render_tag(<<"script">>, [],
-                               [
-                                <<"cotonic.ready.then(function() {">>,
-                                    Spawn,
-                                <<"});">>
-                               ]),
+                               [ <<"cotonic.ready.then(function() {">>, Spawn, <<"});">> ]),
 
     {ok, [Div, Script]}.
+
+keyframe_min_time(#{ keyframe_min_time := T }) -> T;
+keyframe_min_time(#{ }) -> 0.
+
+keyframe_max_time(#{ keyframe_max_time := T }) -> T;
+keyframe_max_time(#{ }) -> infinite.
+
+current_frame(TeleviewId, RendererId, Context) ->
+    case z_teleview_state:get_current_frame(TeleviewId, RendererId, Context) of
+        #{ current_frame := Frame } ->
+            Frame;
+        _ ->
+            <<>>
+    end.
+
 

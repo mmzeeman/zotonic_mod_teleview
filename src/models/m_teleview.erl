@@ -57,21 +57,6 @@
 %% Model Gets
 %%
 
-m_get([Teleview, <<"state">>, Renderer | Rest], Msg, Context) ->
-    Payload = maps:get(payload, Msg),
-
-    ?DEBUG(ensure_renderer),
-
-    TeleviewId = z_convert:to_integer(Teleview),
-    RendererId = z_convert:to_integer(Renderer),
-
-    % [TODO] acl check
-    case ensure_renderer(TeleviewId, RendererId, Payload, Context) of
-        {error, _R}=Error ->
-            Error;
-        Result ->
-            {ok, {Result, Rest}}
-    end;
 
 %% Request for the keyframe
 m_get([Teleview, <<"keyframe">>, Renderer | Rest], _Msg, Context) ->
@@ -92,7 +77,8 @@ m_get([Teleview, <<"current_frame">>, Renderer | Rest], _Msg, Context) ->
 
     case z_teleview_acl:is_view_allowed(TeleviewId, RendererId, Context) of
         true ->
-            {ok, {z_teleview_state:get_current_frame(TeleviewId, RendererId, Context), Rest}};
+            Frame = z_teleview_state:get_current_frame(TeleviewId, RendererId, Context),
+            {ok, {Frame, Context), Rest}};
         false ->
             {error, eaccess}
     end;
@@ -132,25 +118,4 @@ publish_event(Event, TeleviewId, RendererId, Msg, Context) ->
 publish_event(Event, SubEvent, TeleviewId, RendererId, Msg, Context) ->
     z_mqtt:publish([model, teleview, event, TeleviewId, Event, RendererId, SubEvent], Msg, z_acl:sudo(Context)).
 
-
-% @doc Make sure the teleview and renderer are running. When they are not, use 
-% the pickle to restart the teleview and/or renderer.
-ensure_renderer(TeleviewId, RendererId, Pickle, Context) ->
-    %% Make sure the teleview is running.
-    case catch z_utils:depickle(Pickle, Context) of
-        #{ args := Args, vary := Vary } ->
-            TId = mod_teleview:teleview_id(Args),
-            RId = mod_teleview:renderer_id(TeleviewId, Vary),
-
-            case TId =:= TeleviewId andalso RId =:= RendererId of
-                true ->
-                    mod_teleview:ensure_renderer(TeleviewId, RendererId, Args, Vary, Context);
-                false ->
-                    {error, invalid}
-            end;
-        {checksum_invalid, _} ->
-            {error, invalid};
-       _ ->
-            {error, unknown}
-    end.
 

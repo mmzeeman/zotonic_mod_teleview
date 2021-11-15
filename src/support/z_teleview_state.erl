@@ -83,6 +83,7 @@ start_renderer(TeleviewId, VaryArgs, Context) ->
         true ->
             {ok, RendererId};
         false ->
+            %% Ensure access from this session to the teleview.
             gen_server:call({via, z_proc, {{?MODULE, TeleviewId}, Context}},
                             {start_renderer, VaryArgs, z_context:prune_for_scomp(Context)})
     end.
@@ -124,6 +125,7 @@ get_current_frame(TeleviewId, RendererId, Context) ->
     Table = table_name(Context),
     case ets:lookup(Table, {current_frame, TeleviewId, RendererId}) of
         [] ->
+            ?DEBUG(no_frame),
             undefined;
         [{_Key, Frame, Sn}] ->
             #{ current_frame => Frame,
