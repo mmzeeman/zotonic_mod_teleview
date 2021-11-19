@@ -4,6 +4,8 @@ Mod teleview provides live updating server rendered views.
 
 📺
 
+![Teleview](https://user-images.githubusercontent.com/1024972/142467768-6838d498-2611-40dd-ae3a-60b5e474d047.jpg)
+
 # Introduction
 
 Teleview makes it possible to have server side rendered views, which update on the client. The communication
