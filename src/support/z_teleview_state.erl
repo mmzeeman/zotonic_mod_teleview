@@ -25,7 +25,16 @@
     start_link/4,
     start_renderer/3,
 
-    keep_alive/3
+    keep_alive/3,
+
+    init_table/1,
+    store_current_frame/5,
+    get_current_frame/3,
+
+    store_keyframe/5,
+    get_keyframe/3, 
+
+    delete_frames/3
 ]).
 
 % gen_server callbacks
@@ -64,13 +73,98 @@ start_link(Id, Supervisor, Args, Context) ->
 
 
 % @doc Start a renderer.
+-spec start_renderer(integer(), map(), zotonic:context()) -> {ok, integer()} | {error, _}.
 start_renderer(TeleviewId, VaryArgs, Context) ->
-    gen_server:call({via, z_proc, {{?MODULE, TeleviewId}, Context}},
-                    {start_renderer, VaryArgs, z_context:prune_for_scomp(Context)}).
+
+    %% Generate a stable renderer id from the id of the teleview and the vary args of the renderer
+    RendererId = mod_teleview:renderer_id(TeleviewId, VaryArgs),
+
+    case is_renderer_already_started(TeleviewId, RendererId, Context) of
+        true ->
+            {ok, RendererId};
+        false ->
+            %% Ensure access from this session to the teleview.
+            gen_server:call({via, z_proc, {{?MODULE, TeleviewId}, Context}},
+                            {start_renderer, VaryArgs, z_context:prune_for_scomp(Context)})
+    end.
+
 
 % @doc Tell the teleview state process to keep the renderer alive
 keep_alive(TeleviewId, RendererId, Context) ->
     gen_server:cast({via, z_proc, {{?MODULE, TeleviewId}, Context}}, {keep_alive, RendererId}).
+
+
+% @doc Return true when the renderer is already started.
+is_renderer_already_started(TeleviewId, RendererId, Context) ->
+    is_pid(z_proc:whereis({z_teleview_renderer_sup, TeleviewId, RendererId}, Context)).
+
+
+%%
+%% Teleview Ets State. This table is shared by all televiews. It contains the frames
+%% of the different renderers.
+%%
+
+init_table(Context) ->
+    Table = table_name(Context),
+    ets:new(Table, [named_table, set, {keypos, 1},
+                    public,
+                    {write_concurrency, true},
+                    {read_concurrency, true}]).
+
+
+table_name(Context) ->
+    z_utils:name_for_site(?MODULE, Context).
+
+
+% @doc Store the current frame of a renderer.
+store_current_frame(TeleviewId, RendererId, Frame, Sn, Context) ->
+    Table = table_name(Context),
+    ets:insert(Table, {{current_frame, TeleviewId, RendererId}, Frame, Sn}).
+
+% @doc Get the current frame of the specified 
+get_current_frame(TeleviewId, RendererId, Context) ->
+    Table = table_name(Context),
+    case ets:lookup(Table, {current_frame, TeleviewId, RendererId}) of
+        [] ->
+            %% The model already checked access to the teleview. 
+            %% try to restart it.
+            TeleviewArgs = z_teleview_acl:get_args({teleview, TeleviewId}, Context),
+            RendererArgs = z_teleview_acl:get_args({renderer, TeleviewId, RendererId}, Context), 
+
+            case scomp_teleview_teleview:ensure_renderer(TeleviewArgs, RendererArgs, Context) of
+                {ok, TeleviewId, RendererId} ->
+                    #{ state => restarting };
+                {error, Error} ->
+                    lager:warning("Could not restart renderer: ~p", [ Error ]),
+                    {error, restart_problem}
+            end;
+        [{_Key, Frame, Sn}] ->
+            #{ state => ok, current_frame => Frame, current_frame_sn => Sn }
+    end.
+
+% @doc Store the keyframe of a renderer.
+store_keyframe(TeleviewId, RendererId, Frame, Sn, Context) ->
+    Table = table_name(Context),
+    ets:insert(Table, {{keyframe, TeleviewId, RendererId}, Frame, Sn}).
+
+get_keyframe(TeleviewId, RendererId, Context) ->
+    Table = table_name(Context),
+    case ets:lookup(Table, {keyframe, TeleviewId, RendererId}) of
+        [] ->
+            undefined;
+        [{_Key, Frame, Sn}] ->
+            #{ frame => Frame,
+               keyframe_sn => Sn }
+    end.
+
+
+% @doc Remove the current and keyframe of a renderer.
+delete_frames(TeleviewId, RendererId, Context) ->
+    Table = table_name(Context),
+    ets:delete(Table, {current_frame, TeleviewId, RendererId}),
+    ets:delete(Table, {keyframe, TeleviewId, RendererId}),
+    ok.
+
 
 %%
 %% gen_server callbacks.
@@ -85,7 +179,6 @@ init([Id, Supervisor, #{ topics := Topics }=Args, Context]) ->
     ok = setup_tick(Args),
 
     m_teleview:publish_event(started, Id, #{ }, Context),
-
     trigger_check(),
         
     {ok, #state{id=Id, teleview_supervisor=Supervisor, args=Args, context=Context}}.
@@ -108,11 +201,10 @@ handle_call({start_renderer, VaryArgs, Context}, _From,
 
             %% Trigger a synchronized render, and return the renderstate so it can be 
             %% put on the page immediately
-            RendererState = z_teleview_render:sync_render(State#state.id, RendererId, State#state.args, Context),
-            {reply, {ok, RendererState}, State#state{no_renderers_count=0, renderers=Renderers1}};
+            ok = z_teleview_render:sync_render(State#state.id, RendererId, State#state.args, Context),
+            {reply, {ok, RendererId}, State#state{no_renderers_count=0, renderers=Renderers1}};
         {error, {already_started, _Pid}} ->
-            RendererState = z_teleview_differ:state(State#state.id, RendererId, Context),
-            {reply, {ok, RendererState}, State#state{no_renderers_count=0}};
+            {reply, {ok, RendererId}, State#state{no_renderers_count=0}};
         {error, Error} ->
             {reply, {error, {could_not_start, Error}}, State}
     end;

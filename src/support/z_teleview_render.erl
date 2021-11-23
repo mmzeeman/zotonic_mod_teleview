@@ -100,7 +100,7 @@ handle_call({render, Args}, _From, #state{processing = true}=State) ->
     %%
     %% Note, the diff_tries is not updated. It could be that the differ is too
     %% slow, and can't keep up with the pace of the updates.
-    lager:warning("Renderer is waiting for differ, but accepting new render.", []),
+    lager:warning("Renderer is waiting for differ, but accepting new render request.", []),
     {reply, ok, State#state{
                   render_result = undefined,
                   render_args = Args}};
@@ -114,9 +114,9 @@ handle_call({render, Args}, _From, #state{processing = false}=State) ->
 
 handle_call({sync_render, Args}, _From, #state{}=State) ->
     RenderResult = render(Args, State),
-    DifferState = z_teleview_differ:sync_new_frame(State#state.differ_pid, RenderResult),
+    ok = z_teleview_differ:sync_new_frame(State#state.differ_pid, RenderResult),
     State1 = State#state{diff_tries = 0, render_result = undefined, render_args=undefined, processing=false},
-    {reply, DifferState, State1};
+    {reply, ok, State1};
 
 
 handle_call(Msg, _From, State) ->
@@ -185,11 +185,13 @@ diff_wait_time(N) ->
 
 % Render the template with the supplied vars and send the result to the differ.
 render(Args, #state{template=Template, args=RenderArgs, render_context=Context}) ->
-    Args1 = merge_args(RenderArgs, Args),
-    {IOList, _Context} = z_template:render_to_iolist(Template, Args1, Context),
-    Result = z_convert:to_binary(IOList),
-    z_depcache:flush_process_dict(),
-    Result.
+    try
+        Args1 = merge_args(RenderArgs, Args),
+        {IOList, _Context} = z_template:render_to_iolist(Template, Args1, Context),
+        z_convert:to_binary(IOList)
+    after 
+        z_depcache:flush_process_dict()
+    end.
 
  
 % Get the pid of the differ from the supervisor.

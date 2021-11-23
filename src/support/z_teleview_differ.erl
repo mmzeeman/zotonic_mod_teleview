@@ -32,10 +32,12 @@
           teleview_id,
           renderer_id,
 
+          % The current keyframe
           keyframe :: undefined | binary(),
           keyframe_sn = 0 :: non_neg_integer(),
           last_time = 0 :: integer(),
 
+          % The current frame
           current_frame :: undefined | binary(),
           current_frame_sn = 0 :: non_neg_integer(),
 
@@ -91,11 +93,13 @@ state(TeleviewId, RendererId, Context) ->
 %%
 
 init([TeleviewId, RendererId, Args, Context]) ->
+    process_flag(trap_exit, true),
+
     % When we restarted because of an error, the viewers should be reset.
     m_teleview:publish_event(reset, TeleviewId, RendererId, #{}, Context),
 
-    {ok, #state{min_time=maps:get(differ_min_time, Args, ?DEFAULT_MIN_TIME),
-                max_time=maps:get(differ_max_time, Args, ?DEFAULT_MAX_TIME),
+    {ok, #state{min_time=maps:get(keyframe_min_time, Args, ?DEFAULT_MIN_TIME),
+                max_time=maps:get(keyframe_max_time, Args, ?DEFAULT_MAX_TIME),
                 teleview_id=TeleviewId,
                 renderer_id=RendererId,
                 context=Context}}.
@@ -115,11 +119,7 @@ handle_call({new_frame, Frame}, _From, #state{processing=false}=State) ->
 
 handle_call({sync_new_frame, Frame}, _From, #state{}=State) ->
     {_Patch, State1} = next_patch(Frame, State),
-    {reply, differ_state(State1), State1#state{processing=false, new_frame=undefined}};
-
-
-handle_call(state, _From, State) ->
-    {reply, differ_state(State), State};
+    {reply, ok, State1#state{processing=false, new_frame=undefined}};
 
 handle_call(keyframe, _From, State) ->
     {reply, State#state.keyframe, State};
@@ -141,7 +141,8 @@ handle_info(next_patch, #state{processing=true, new_frame=Frame}=State) ->
 handle_info(_Info, State) ->
     {noreply, State}.
 
-terminate(_Reason, _State) ->
+terminate(_Reason, State) ->
+    z_teleview_state:delete_frames(State#state.teleview_id, State#state.renderer_id, State#state.context),
     ok.
 
 code_change(_OldVsn, State, _Extra) ->
@@ -249,19 +250,25 @@ do_complex_patch(NewFrame, #state{}=State) ->
 
 %% Update the state when a keyframe is produced.
 update_state_keyframe(NewFrame, CurrentTime, State) ->
-    FrameSN = State#state.current_frame_sn + 1,
-    State#state{keyframe = NewFrame,
-                keyframe_sn = FrameSN,
-                current_frame = NewFrame,
-                current_frame_sn = FrameSN,
-                last_time = CurrentTime
-               }.
+    % Update the state normally
+    State1 = update_state(NewFrame, State),
+
+    z_teleview_state:store_keyframe(State#state.teleview_id, State#state.renderer_id, NewFrame, State1#state.current_frame_sn, State#state.context),
+
+    % And keep this frame as the new keyframe
+    State1#state{keyframe = NewFrame,
+                 keyframe_sn = State1#state.current_frame_sn,
+                 last_time = CurrentTime
+                }.
 
 %% Update the state when a cumulative or incremental patch is produced.
 update_state(NewFrame, State) ->
+    FrameSn = State#state.current_frame_sn + 1,
+    z_teleview_state:store_current_frame(State#state.teleview_id, State#state.renderer_id, NewFrame, FrameSn, State#state.context),
+
     State#state{
       current_frame = NewFrame,
-      current_frame_sn = State#state.current_frame_sn + 1
+      current_frame_sn = FrameSn
      }.
 
 make_patch(SourceText, DestinationText) ->
@@ -308,15 +315,4 @@ patch_to_list([{skip, N} | Rest], Acc) ->
 patch_to_list([{insert, Bin} | Rest], Acc) ->
     patch_to_list(Rest, [Bin, i | Acc]).
 
-
-differ_state(#state{}=State) ->
-    #{keyframe => State#state.keyframe,
-      keyframe_sn => State#state.keyframe_sn,
-      current_frame => State#state.current_frame,
-      current_frame_sn => State#state.current_frame_sn,
-      min_time => State#state.min_time,
-      max_time => State#state.max_time,
-      teleview_id => State#state.teleview_id,
-      renderer_id => State#state.renderer_id
-     }.
 

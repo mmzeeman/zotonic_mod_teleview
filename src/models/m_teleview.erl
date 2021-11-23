@@ -43,7 +43,6 @@
 %%
 %% model/teleview/post/<teleview-id>/still-watching/<renderer-id>      : Indicate that the viewer is still watching.
 %%
-%%
 %% model/teleview/event/<teleview-id>/stopped                          : The whole teleview is stopped. (e.g. when all renderers are gone) 
 %% model/teleview/event/<teleview-id>/started                          : The teleview is started. 
 %%
@@ -54,36 +53,61 @@
 %% model/teleview/event/<teleview-id>/update/<renderer-id>/incremental : Patch against the current frame and update view.
 %%
 
-m_get([Teleview, <<"state">>, Renderer | Rest], Msg, Context) ->
-    Payload = maps:get(payload, Msg),
+%%
+%% Model Gets
+%%
 
+
+%% Request for the keyframe
+m_get([Teleview, <<"keyframe">>, Renderer | Rest], _Msg, Context) ->
     TeleviewId = z_convert:to_integer(Teleview),
     RendererId = z_convert:to_integer(Renderer),
 
-    % [TODO] acl check
-    case ensure_renderer(TeleviewId, RendererId, Payload, Context) of
-        {error, _R}=Error ->
-            Error;
-        Result ->
-            {ok, {Result, Rest}}
+    case z_teleview_acl:is_view_allowed(TeleviewId, RendererId, Context) of
+        true ->
+            Frame = z_teleview_state:get_keyframe(TeleviewId, RendererId, Context),
+            {ok, {Frame, Rest}};
+        false ->
+            {error, eaccess}
+    end;
+
+%% Request for the current frame
+m_get([Teleview, <<"current_frame">>, Renderer | Rest], _Msg, Context) ->
+    TeleviewId = z_convert:to_integer(Teleview),
+    RendererId = z_convert:to_integer(Renderer),
+
+    case z_teleview_acl:is_view_allowed(TeleviewId, RendererId, Context) of
+        true ->
+            Frame = z_teleview_state:get_current_frame(TeleviewId, RendererId, Context),
+            {ok, {Frame, Rest}};
+        false ->
+            {error, eaccess}
     end;
 
 m_get(V, _Msg, _Context) ->
     lager:info("Unknown ~p lookup: ~p", [?MODULE, V]),
     {error, unknown_path}.
 
-m_post([Teleview, <<"still_watching">>, Renderer | _Rest], _Msg, Context) ->
-    % [TODO] acl check
-    z_teleview_state:keep_alive(z_convert:to_integer(Teleview),
-                                z_convert:to_integer(Renderer), Context),
-    ok;
-m_post(Topic, _Msg, _Context) ->
-    ?DEBUG(Topic),
+%%
+%% Model Posts
+%%
 
-    ok.
+m_post([Teleview, <<"still_watching">>, Renderer], _Msg, Context) ->
+    TeleviewId = z_convert:to_integer(Teleview),
+    RendererId = z_convert:to_integer(Renderer),
+
+    case z_teleview_acl:is_view_allowed(TeleviewId, RendererId, Context) of
+        true ->
+            z_teleview_state:keep_alive(TeleviewId, RendererId, Context);
+        false ->
+            {error, eaccess}
+    end;
+m_post(V, _Msg, _Context) ->
+    lager:info("Unknown ~p post: ~p", [?MODULE, V]),
+    {error, unknown_path}.
 
 %%
-%% API
+%% Model Events
 %%
 
 publish_event(Event, TeleviewId, Msg, Context) ->
@@ -95,25 +119,4 @@ publish_event(Event, TeleviewId, RendererId, Msg, Context) ->
 publish_event(Event, SubEvent, TeleviewId, RendererId, Msg, Context) ->
     z_mqtt:publish([model, teleview, event, TeleviewId, Event, RendererId, SubEvent], Msg, z_acl:sudo(Context)).
 
-
-% @doc Make sure the teleview and renderer are running. When they are not, use 
-% the pickle to restart the teleview and/or renderer.
-ensure_renderer(TeleviewId, RendererId, Pickle, Context) ->
-    %% Make sure the teleview is running.
-    case catch z_utils:depickle(Pickle, Context) of
-        #{ args := Args, vary := Vary } ->
-            TId = mod_teleview:teleview_id(Args),
-            RId = mod_teleview:renderer_id(TeleviewId, Vary),
-
-            case TId =:= TeleviewId andalso RId =:= RendererId of
-                true ->
-                    mod_teleview:ensure_renderer(TeleviewId, RendererId, Args, Vary, Context);
-                false ->
-                    {error, invalid}
-            end;
-        {checksum_invalid, _} ->
-            {error, invalid};
-       _ ->
-            {error, unknown}
-    end.
 

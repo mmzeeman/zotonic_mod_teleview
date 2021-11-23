@@ -1,5 +1,5 @@
 %% @author Maas-Maarten Zeeman <mmzeeman@xs4all.nl>
-%% @copyright 2019 Maas-Maarten Zeeman
+%% @copyright 2019-2021 Maas-Maarten Zeeman
 %% @doc Put a teleview on the page.
 
 %% Copyright 2019-2021 Maas-Maarten Zeeman
@@ -20,7 +20,7 @@
 -module(scomp_teleview_teleview).
 -behaviour(zotonic_scomp).
 
--export([vary/2, render/3]).
+-export([vary/2, render/3, ensure_renderer/3]).
 
 -include_lib("zotonic_core/include/zotonic.hrl").
 
@@ -31,58 +31,89 @@ vary(_Params, _Context) -> nocache.
 
 render(Params, _Vars, Context) ->
     Topics = proplists:get_all_values(topic, Params),
-    Vary = proplists:get_value(vary, Params, #{}),
+    RendererArgs = proplists:get_value(vary, Params, #{}),
 
     Args = maps:from_list(z_utils:prop_delete(topic, z_utils:prop_delete(vary, Params))),
-    Args1 = maps:put(topics, Topics, Args),
+    TeleviewArgs = maps:put(topics, Topics, Args),
 
-    case mod_teleview:start_teleview(Args1, Context) of
+    case ensure_renderer(TeleviewArgs, RendererArgs, Context) of
+        {ok, TeleviewId, RendererId} ->
+            %% Store the arguments of the teleview, they can be used later to restart
+            %% the teleview.
+            z_teleview_acl:store_args([{{teleview, TeleviewId}, TeleviewArgs},
+                                       {{renderer, TeleviewId, RendererId}, RendererArgs}], Context),
+
+            %% Securely store the arguments of the teleview so it can be restarted by
+            %% the worker when needed.
+            %% m_server_storage({teleview_renderer, TeleviewId, RendererId},
+            %%                  {teleview_renderer_args, TeleviewArgs, RendererArgs},
+            %%                  Context),
+
+            render_teleview(#{ teleview_id => TeleviewId,
+                               renderer_id => RendererId,
+                               keyframe_min_time => keyframe_min_time(TeleviewArgs),
+                               keyframe_max_time => keyframe_max_time(TeleviewArgs) },
+                            Params, Context);
         {error, _E}=Error ->
-            {error, Error};
-        {ok, TeleviewId} ->
-            {ok, RenderState} = mod_teleview:start_renderer(TeleviewId, Vary, Context),
-            Pickle = z_utils:pickle(#{ args => Args1, vary => Vary }, Context), 
-            render_teleview(maps:put(pickle, Pickle, RenderState), Params, Context)
+            Error
     end.
 
 %%
 %% Helpers
 %%
+%%
 
-render_teleview(RenderState, Params, Context) ->
-    Id = z_ids:identifier(),
+ensure_renderer(undefined, undefined, _Context) ->
+    {error, no_args};
+ensure_renderer(TeleviewArgs, RendererArgs, Context) ->
+    case mod_teleview:start_teleview(TeleviewArgs, Context) of
+        {ok, TeleviewId} ->
+            {ok, RendererId} = mod_teleview:start_renderer(TeleviewId, RendererArgs, Context),
+            {ok, TeleviewId, RendererId};
+        {error, _E}=Error ->
+            Error
+    end.
 
-    %% Remove the language, to remove the lang element from the urls generated below.
+
+render_teleview(#{ teleview_id := TeleviewId, renderer_id := RendererId }=RenderState, Params, Context) ->
     Context1 = z_context:set_language(undefined, Context),
-
-    RenderState1 = maps:put(uiId, Id, RenderState),
-
-    CurrentFrame = maps:get(current_frame, RenderState1, <<>>),
-
-    Args = case maps:get(min_time, RenderState1, undefined) of
-               0 ->
-                   maps:without([current_frame, current_frame_sn], RenderState1);
-               _ ->
-                   RenderState1
-           end,
-    ArgsJSON = z_json:encode(Args),
 
     SrcUrl = z_lib_include:url([ "lib/js/zotonic.teleview.worker.js" ], Context1),
     Base = proplists:get_value(base, Params, <<"cotonic/cotonic-worker.js">>),
     BaseUrl = z_lib_include:url([ Base ], Context1),
 
+    %% Prepare DOM
+    CurrentFrame = current_frame(TeleviewId, RendererId, Context),
+    Id = z_ids:identifier(),
+    Div = z_tags:render_tag(<<"div">>, [{<<"id">>, Id},
+                                        {<<"data-renderer-id">>, RendererId},
+                                        {<<"data-teleview-id">>, TeleviewId}],
+                            [ CurrentFrame ]),
+
+    %% Prepare script to start the client side worker which handles
+    %% the teleview.
+    Args = maps:put(id, Id, RenderState),
+    ArgsJSON = z_json:encode(Args),
     Name = proplists:get_value(name, Params, Id),
-
-    Div = z_tags:render_tag(<<"div">>, [{<<"id">>, Id}], [ CurrentFrame ]),
-
     Spawn = [ <<"cotonic.spawn_named(\"">>, z_utils:js_escape(Name), "\", \"", SrcUrl, "\", \"", BaseUrl, "\",", ArgsJSON, ");" ],
 
     Script = z_tags:render_tag(<<"script">>, [],
-                               [
-                                <<"cotonic.ready.then(function() {">>,
-                                    Spawn,
-                                <<"});">>
-                               ]),
+                               [ <<"cotonic.ready.then(function() {">>, Spawn, <<"});">> ]),
 
     {ok, [Div, Script]}.
+
+keyframe_min_time(#{ keyframe_min_time := T }) -> T;
+keyframe_min_time(#{ }) -> 0.
+
+keyframe_max_time(#{ keyframe_max_time := T }) -> T;
+keyframe_max_time(#{ }) -> infinite.
+
+current_frame(TeleviewId, RendererId, Context) ->
+    case z_teleview_state:get_current_frame(TeleviewId, RendererId, Context) of
+        #{ current_frame := Frame } ->
+            Frame;
+        _ ->
+            <<>>
+    end.
+
 

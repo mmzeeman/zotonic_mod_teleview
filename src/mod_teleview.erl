@@ -22,7 +22,7 @@
 -mod_title("TeleView").
 -mod_description("Provides server rendered live updating views").
 -mod_provides([teleview]).
--mod_depends([base, mod_mqtt]).
+-mod_depends([base, mod_mqtt, mod_server_storage]).
 -mod_prio(1000).
 
 -behaviour(supervisor).
@@ -34,7 +34,7 @@
 
 -export([
     observe_acl_is_allowed/2,
-    observe_tick_1m/2,
+    observe_tick_10m/2,
 
     start_teleview/2,
     stop_teleview/2,
@@ -106,11 +106,12 @@ stop_teleview(Id, Context) ->
 
 % @doc Start a new renderer belonging to a teleview. The passed args and context are
 % used for rendering. The teleview must already be started earlier.
+-spec start_renderer(integer(), map(), zotonic:context()) -> {ok, integer()} | {error, _}.
 start_renderer(TeleviewId, Args, Context) ->
     case z_teleview_state:start_renderer(TeleviewId, Args, Context) of
-        {ok, #{ teleview_id := TeleviewId, renderer_id := RendererId }=RendererArgs} ->
+        {ok, RendererId} ->
             z_teleview_acl:ensure_renderer_access(TeleviewId, RendererId, Context),
-            {ok, RendererArgs};
+            {ok, RendererId};
         Error ->
             Error 
     end.
@@ -148,7 +149,7 @@ observe_acl_is_allowed(#acl_is_allowed{}, _Context) ->
     undefined.
 
 % @doc Cleanup the acl table
-observe_tick_1m(tick_1m, Context) ->
+observe_tick_10m(tick_10m, Context) ->
     z_teleview_acl:cleanup_table(Context).
 
 % @doc Return the number of televiews
@@ -183,6 +184,7 @@ init(Args) ->
               {module, ?MODULE}
              ]),
 
+    z_teleview_state:init_table(Context),
     z_teleview_acl:init_table(Context),
 
     TeleviewSpec = #{id => z_teleview_sup,
