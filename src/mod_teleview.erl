@@ -22,7 +22,7 @@
 -mod_title("TeleView").
 -mod_description("Provides server rendered live updating views").
 -mod_provides([teleview]).
--mod_depends([base, mod_mqtt, mod_server_storage]).
+-mod_depends([base, mod_mqtt]).
 -mod_prio(1000).
 
 -behaviour(supervisor).
