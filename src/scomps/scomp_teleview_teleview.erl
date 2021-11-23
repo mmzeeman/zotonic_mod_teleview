@@ -20,7 +20,7 @@
 -module(scomp_teleview_teleview).
 -behaviour(zotonic_scomp).
 
--export([vary/2, render/3]).
+-export([vary/2, render/3, ensure_renderer/3]).
 
 -include_lib("zotonic_core/include/zotonic.hrl").
 
@@ -31,26 +31,49 @@ vary(_Params, _Context) -> nocache.
 
 render(Params, _Vars, Context) ->
     Topics = proplists:get_all_values(topic, Params),
-    Vary = proplists:get_value(vary, Params, #{}),
+    RendererArgs = proplists:get_value(vary, Params, #{}),
 
     Args = maps:from_list(z_utils:prop_delete(topic, z_utils:prop_delete(vary, Params))),
-    Args1 = maps:put(topics, Topics, Args),
+    TeleviewArgs = maps:put(topics, Topics, Args),
 
-    case mod_teleview:start_teleview(Args1, Context) of
-        {ok, TeleviewId} ->
-            {ok, RendererId} = mod_teleview:start_renderer(TeleviewId, Vary, Context),
+    case ensure_renderer(TeleviewArgs, RendererArgs, Context) of
+        {ok, TeleviewId, RendererId} ->
+            %% Store the arguments of the teleview, they can be used later to restart
+            %% the teleview.
+            z_teleview_acl:store_args([{{teleview, TeleviewId}, TeleviewArgs},
+                                       {{renderer, TeleviewId, RendererId}, RendererArgs}], Context),
+
+            %% Securely store the arguments of the teleview so it can be restarted by
+            %% the worker when needed.
+            %% m_server_storage({teleview_renderer, TeleviewId, RendererId},
+            %%                  {teleview_renderer_args, TeleviewArgs, RendererArgs},
+            %%                  Context),
+
             render_teleview(#{ teleview_id => TeleviewId,
                                renderer_id => RendererId,
-                               keyframe_min_time => keyframe_min_time(Args1),
-                               keyframe_max_time => keyframe_max_time(Args1) },
+                               keyframe_min_time => keyframe_min_time(TeleviewArgs),
+                               keyframe_max_time => keyframe_max_time(TeleviewArgs) },
                             Params, Context);
         {error, _E}=Error ->
-            {error, Error}
+            Error
     end.
 
 %%
 %% Helpers
 %%
+%%
+
+ensure_renderer(undefined, undefined, _Context) ->
+    {error, no_args};
+ensure_renderer(TeleviewArgs, RendererArgs, Context) ->
+    case mod_teleview:start_teleview(TeleviewArgs, Context) of
+        {ok, TeleviewId} ->
+            {ok, RendererId} = mod_teleview:start_renderer(TeleviewId, RendererArgs, Context),
+            {ok, TeleviewId, RendererId};
+        {error, _E}=Error ->
+            Error
+    end.
+
 
 render_teleview(#{ teleview_id := TeleviewId, renderer_id := RendererId }=RenderState, Params, Context) ->
     Context1 = z_context:set_language(undefined, Context),

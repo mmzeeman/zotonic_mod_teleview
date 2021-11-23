@@ -22,7 +22,7 @@
 -mod_title("TeleView").
 -mod_description("Provides server rendered live updating views").
 -mod_provides([teleview]).
--mod_depends([base, mod_mqtt]).
+-mod_depends([base, mod_mqtt, mod_server_storage]).
 -mod_prio(1000).
 
 -behaviour(supervisor).
@@ -34,7 +34,7 @@
 
 -export([
     observe_acl_is_allowed/2,
-    observe_tick_1m/2,
+    observe_tick_10m/2,
 
     start_teleview/2,
     stop_teleview/2,
@@ -149,7 +149,7 @@ observe_acl_is_allowed(#acl_is_allowed{}, _Context) ->
     undefined.
 
 % @doc Cleanup the acl table
-observe_tick_1m(tick_1m, Context) ->
+observe_tick_10m(tick_10m, Context) ->
     z_teleview_acl:cleanup_table(Context).
 
 % @doc Return the number of televiews

@@ -65,7 +65,8 @@ m_get([Teleview, <<"keyframe">>, Renderer | Rest], _Msg, Context) ->
 
     case z_teleview_acl:is_view_allowed(TeleviewId, RendererId, Context) of
         true ->
-            {ok, {z_teleview_state:get_keyframe(TeleviewId, RendererId, Context), Rest}};
+            Frame = z_teleview_state:get_keyframe(TeleviewId, RendererId, Context),
+            {ok, {Frame, Rest}};
         false ->
             {error, eaccess}
     end;
@@ -78,7 +79,7 @@ m_get([Teleview, <<"current_frame">>, Renderer | Rest], _Msg, Context) ->
     case z_teleview_acl:is_view_allowed(TeleviewId, RendererId, Context) of
         true ->
             Frame = z_teleview_state:get_current_frame(TeleviewId, RendererId, Context),
-            {ok, {Frame, Context), Rest}};
+            {ok, {Frame, Rest}};
         false ->
             {error, eaccess}
     end;
@@ -91,7 +92,7 @@ m_get(V, _Msg, _Context) ->
 %% Model Posts
 %%
 
-m_post([Teleview, <<"still_watching">>, Renderer | _Rest], _Msg, Context) ->
+m_post([Teleview, <<"still_watching">>, Renderer], _Msg, Context) ->
     TeleviewId = z_convert:to_integer(Teleview),
     RendererId = z_convert:to_integer(Renderer),
 

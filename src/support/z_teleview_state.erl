@@ -121,15 +121,25 @@ store_current_frame(TeleviewId, RendererId, Frame, Sn, Context) ->
     Table = table_name(Context),
     ets:insert(Table, {{current_frame, TeleviewId, RendererId}, Frame, Sn}).
 
+% @doc Get the current frame of the specified 
 get_current_frame(TeleviewId, RendererId, Context) ->
     Table = table_name(Context),
     case ets:lookup(Table, {current_frame, TeleviewId, RendererId}) of
         [] ->
-            ?DEBUG(no_frame),
-            undefined;
+            %% The model already checked access to the teleview. 
+            %% try to restart it.
+            TeleviewArgs = z_teleview_acl:get_args({teleview, TeleviewId}, Context),
+            RendererArgs = z_teleview_acl:get_args({renderer, TeleviewId, RendererId}, Context), 
+
+            case scomp_teleview_teleview:ensure_renderer(TeleviewArgs, RendererArgs, Context) of
+                {ok, TeleviewId, RendererId} ->
+                    #{ state => restarting };
+                {error, Error} ->
+                    lager:warning("Could not restart renderer: ~p", [ Error ]),
+                    {error, restart_problem}
+            end;
         [{_Key, Frame, Sn}] ->
-            #{ current_frame => Frame,
-               current_frame_sn => Sn }
+            #{ state => ok, current_frame => Frame, current_frame_sn => Sn }
     end.
 
 % @doc Store the keyframe of a renderer.
@@ -169,7 +179,6 @@ init([Id, Supervisor, #{ topics := Topics }=Args, Context]) ->
     ok = setup_tick(Args),
 
     m_teleview:publish_event(started, Id, #{ }, Context),
-
     trigger_check(),
         
     {ok, #state{id=Id, teleview_supervisor=Supervisor, args=Args, context=Context}}.

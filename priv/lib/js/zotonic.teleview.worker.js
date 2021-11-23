@@ -32,7 +32,7 @@ let model = {
     page_state: "active",
 
     hidden_start_time: undefined,
-    need_server_side_check: false
+    need_new_current_frame: false
 };
 
 
@@ -147,7 +147,6 @@ model.present = function(proposal) {
                 } else {
                     if(!model.isKeyframeRequested) {
                         model.isKeyframeRequested = true;
-                        console.log("request-keyframe");
                         self.call(
                             cotonic.mqtt.fill("bridge/origin/model/teleview/get/+teleview_id/keyframe/+renderer_id", model),
                             undefined,
@@ -189,6 +188,7 @@ model.present = function(proposal) {
 
         model.queuedCumulativePatch = undefined; 
         model.incrementalPatchQueue = [];
+        model.need_new_current_frame = false;
     }
 
     if(proposal.is_request_current_frame) {
@@ -202,16 +202,7 @@ model.present = function(proposal) {
     }
 
     if(proposal.is_stop && model.updateTopic) {
-        self.publish(model.updateTopic, "<p>Teleview stopped</p>");
-
-        // [TODO] maybe stop the worker.
-
-        self.unsubscribe(televiewEventTopic(model), actions.televiewEvent);
-        self.unsubscribe(rendererEventTopic(model), actions.rendererEvent);
-        
         self.publish("model/teleview/" + model.televiewId + "/event/stopped", true);
-
-        self.exit();
     }
 
     if(proposal.is_lifecycle_event) {
@@ -219,11 +210,12 @@ model.present = function(proposal) {
             model.hidden_start_time = Date.now(); 
         }
 
+        // Page moved from hidden to passive.
         if(model.page_state === "hidden" && proposal.state === "passive") {
             const now = Date.now();
 
             if(model.hidden_start_time !== undefined && ((now - model.hidden_start_time) > 300000)) {
-                model.need_server_side_check = true;
+                model.need_new_current_frame = true;
             }
 
             model.hidden_start_time = undefined;
@@ -293,7 +285,7 @@ state.nextAction = function(model) {
         actions.stop();
     }
 
-    if(model.need_server_side_check) {
+    if(model.need_new_current_frame) {
         actions.requestCurrentFrame(true);
     }
 }
@@ -304,7 +296,15 @@ state.nextAction = function(model) {
 
 actions.televiewEvent = function(m, a) {
     switch(a.evt_type) {
-        case "stopped": actions.stop();
+        case "stopped":
+            // The server side was stopped.
+            actions.stop(p.payload.reason);
+            break;
+        case "started":
+            // The server-side teleview just (re)stated, request
+            // the current frame
+            actions.requestCurrentFrame(true);
+            break;
     }
 }
 
@@ -342,8 +342,8 @@ actions.requestCurrentFrame = function(withReset) {
     });
 }
 
-actions.stop = function() {
-    model.present({is_stop: true})
+actions.stop = function(reason) {
+    model.present({is_stop: true, reason: reason})
 }
 
 actions.still_watching = function() {
@@ -400,16 +400,23 @@ actions.keyframeResponse = function(m) {
 actions.currentFrameResponse = function(m) {
     const p = m.payload;
     if(p.status === "ok") {
-        model.present({
-            type: "current_frame",
-            is_update: true,
-            update: p.result
-        });
+        if(p.result.state === "ok") {
+            model.present({
+                type: "current_frame",
+                is_update: true,
+                update: p.result
+            });
+        } else if(p.result.state === "restarting") {
+            // The teleview is going to be restarted.
+            actions.reset();
+        } else {
+            console.log("Unknown current frame response");
+        }
     }
 }
 
 actions.currentFrameRequestError = function(m) {
-    console.log("current_frame request error", m);
+    console.log("Current_frame request error", m);
 }
 
 /**
