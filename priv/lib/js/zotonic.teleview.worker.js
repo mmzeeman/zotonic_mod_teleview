@@ -93,8 +93,6 @@ model.present = function(proposal) {
             case "keyframe":
                 model.isKeyframeRequested = false;
                 model.isCurrentFrameRequested = false;
-                model.incrementalPatchQueue = [];
-                model.queuedCumulativePatch = undefined;
 
                 if(model.keyframe_sn === undefined || proposal.update.keyframe_sn > model.keyframe_sn) {
                     model.keyframe = model.current_frame = model.encoder.encode(proposal.update.frame);
@@ -103,15 +101,16 @@ model.present = function(proposal) {
                     if(model.queuedCumulativePatch) {
                         model.current_frame = applyPatch(model.current_frame, model.queuedCumulativePatch, model.encoder);
                         model.current_frame_sn = model.queuedCumulativePatch.current_frame_sn;
-                        model.queuedCumulativePatch = undefined;
                     }
+
+                    model.incrementalPatchQueue = [];
+                    model.queuedCumulativePatch = undefined;
 
                     publishCurrentFrame(model);
                 } else {
                     // Ingore this frame, the current frame is newer.
                     console.log("Keyframe in update is older than current state.");
                 }
-
                 break;
             case "current_frame":
                 model.isCurrentFrameRequested = false;
@@ -410,7 +409,7 @@ actions.currentFrameResponse = function(m) {
             // The teleview is going to be restarted.
             actions.reset();
         } else {
-            console.log("Unknown current frame response");
+            console.log("Unknown current frame response", m);
         }
     }
 }
