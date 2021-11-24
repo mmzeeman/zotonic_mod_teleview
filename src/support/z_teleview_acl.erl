@@ -211,7 +211,6 @@ cleanup_args(Context) ->
                            Table),
 
     %% Mark sweep
-    ?DEBUG(AllEntries),
     ArgsTable = args_table_name(Context),
     MarkedForDeletion = ets:foldl(fun({Key, _}, Acc) ->
                                           case maps:get(Key, AllEntries, 0) of
@@ -223,19 +222,9 @@ cleanup_args(Context) ->
                                   end,
                                   [],
                                   ArgsTable),
-    ?DEBUG(MarkedForDeletion),
 
     [ ets:delete(ArgsTable, Key) || Key <- MarkedForDeletion ], 
-
     ok.
-       
-
-
-
-
-
-
-
 
 %% Return true iff the entry is found in the acl table.
 is_entry_found(undefined, _Entry, _Context) ->
