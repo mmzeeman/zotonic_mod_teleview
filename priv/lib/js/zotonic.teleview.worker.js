@@ -84,7 +84,6 @@ model.present = function(proposal) {
 
         self.subscribe(televiewEventTopic(model), actions.televiewEvent);
         self.subscribe(rendererEventTopic(model), actions.rendererEvent);
-
         self.subscribe("model/lifecycle/event/state", actions.lifecycleEvent);
     }
 
@@ -188,6 +187,7 @@ model.present = function(proposal) {
         model.queuedCumulativePatch = undefined; 
         model.incrementalPatchQueue = [];
         model.need_new_current_frame = false;
+
     }
 
     if(proposal.is_request_current_frame) {
@@ -202,9 +202,6 @@ model.present = function(proposal) {
 
     if(proposal.is_stop && model.updateTopic) {
         const selector = "#" + model.televiewId;
-        self.publish("model/dom/post/remove-class", { selector: selector, class: "teleview-running" });
-        self.publish("model/dom/post/add-class", { selector: selector, class: "teleview-stopped" });
-
         self.publish("model/teleview/" + model.televiewId + "/event/stopped", true);
     }
 
