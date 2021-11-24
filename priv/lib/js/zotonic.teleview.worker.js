@@ -201,6 +201,10 @@ model.present = function(proposal) {
     }
 
     if(proposal.is_stop && model.updateTopic) {
+        const selector = "#" + model.televiewId;
+        self.publish("model/dom/post/remove-class", { selector: selector, class: "teleview-running" });
+        self.publish("model/dom/post/add-class", { selector: selector, class: "teleview-stopped" });
+
         self.publish("model/teleview/" + model.televiewId + "/event/stopped", true);
     }
 
@@ -297,7 +301,7 @@ actions.televiewEvent = function(m, a) {
     switch(a.evt_type) {
         case "stopped":
             // The server side was stopped.
-            actions.stop(p.payload.reason);
+            actions.stop(m.payload.reason);
             break;
         case "started":
             // The server-side teleview just (re)stated, request
