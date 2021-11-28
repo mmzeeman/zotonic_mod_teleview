@@ -4,7 +4,8 @@
  *
  */
 
-let model = {
+
+const model = {
     id: undefined,
     teleview_id: undefined,
     renderer_id: undefined,
@@ -24,9 +25,6 @@ let model = {
 
     max_time: undefined,
     min_time: undefined,
-
-    encoder: undefined,
-    decoder: undefined,
 
     stop: false,
 
@@ -48,6 +46,10 @@ const actions = {};
 
 model.present = function(proposal) {
 
+    /*
+     * Start
+     */
+
     if(proposal.is_start) {
         const arg = proposal.arg;
 
@@ -57,14 +59,11 @@ model.present = function(proposal) {
 
         model.updateTopic = cotonic.mqtt.fill("model/ui/update/+id", model);
 
-        model.encoder = new TextEncoder();
-        model.decoder = new TextDecoder();
-
-        model.keyframe = (arg.keyframe === undefined) ? undefined : model.encoder.encode(arg.keyframe);
+        model.keyframe = (arg.keyframe === undefined) ? undefined : toUTF8(arg.keyframe);
         model.keyframe_sn = arg.keyframe_sn;
         model.isKeyframeRequested = false;
 
-        model.current_frame = (arg.current_frame === undefined) ? undefined : model.encoder.encode(arg.current_frame);
+        model.current_frame = (arg.current_frame === undefined) ? undefined : toUTF8(arg.current_frame);
         model.current_frame_sn = arg.current_frame_sn;
         model.isCurrentFrameRequested = false;
 
@@ -83,7 +82,6 @@ model.present = function(proposal) {
             }
         );
 
-
         self.subscribe(televiewEventTopic(model), actions.televiewEvent);
         self.subscribe(rendererEventTopic(model), actions.rendererEvent);
         self.subscribe("model/lifecycle/event/state", actions.lifecycleEvent);
@@ -92,6 +90,10 @@ model.present = function(proposal) {
         self.publish(cotonic.mqtt.fill("model/teleview/+televiewId/event/started", model), true);
     }
 
+    /*
+     * Update
+     */
+
     if(proposal.is_update) {
         switch(proposal.type) {
             case "keyframe":
@@ -99,11 +101,11 @@ model.present = function(proposal) {
                 model.isCurrentFrameRequested = false;
 
                 if(model.keyframe_sn === undefined || proposal.update.keyframe_sn > model.keyframe_sn) {
-                    model.keyframe = model.current_frame = model.encoder.encode(proposal.update.frame);
+                    model.keyframe = model.current_frame = toUTF8(proposal.update.frame);
                     model.keyframe_sn = model.current_frame_sn = proposal.update.keyframe_sn;
 
                     if(model.queuedCumulativePatch) {
-                        model.current_frame = applyPatch(model.current_frame, model.queuedCumulativePatch, model.encoder);
+                        model.current_frame = applyPatch(model.current_frame, model.queuedCumulativePatch);
                         model.current_frame_sn = model.queuedCumulativePatch.current_frame_sn;
                     }
 
@@ -118,7 +120,7 @@ model.present = function(proposal) {
                 model.isCurrentFrameRequested = false;
 
                 if(model.current_frame_sn === undefined || proposal.update.current_frame_sn > model.current_frame_sn) {
-                    model.current_frame = model.encoder.encode(proposal.update.current_frame);
+                    model.current_frame = toUTF8(proposal.update.current_frame);
                     model.current_frame_sn = proposal.update.current_frame_sn;
 
                     while(model.incrementalPatchQueue.length) {
@@ -126,7 +128,7 @@ model.present = function(proposal) {
 
                         if(model.current_frame_sn + 1 !== p.current_frame_sn) continue; // skip
 
-                        model.current_frame = applyPatch(model.current_frame, p, model.encoder);
+                        model.current_frame = applyPatch(model.current_frame, p);
                         model.current_frame_sn = p.current_frame_sn;
                     }
                 }
@@ -135,7 +137,7 @@ model.present = function(proposal) {
 
             case "cumulative": // Patch against the keyframe
                 if(model.keyframe && model.keyframe_sn === proposal.update.keyframe_sn) {
-                    model.current_frame = applyPatch(model.keyframe, proposal.update, model.encoder);
+                    model.current_frame = applyPatch(model.keyframe, proposal.update);
 
                     // Update the current frame sn when it is available. 
                     if(proposal.update.current_frame_sn !== undefined) {
@@ -158,7 +160,7 @@ model.present = function(proposal) {
 
             case "incremental": // Patch against the current frame.
                 if(model.current_frame && model.current_frame_sn + 1 === proposal.update.current_frame_sn) {
-                    model.current_frame = applyPatch(model.current_frame, proposal.update, model.encoder);
+                    model.current_frame = applyPatch(model.current_frame, proposal.update);
                     model.current_frame_sn = proposal.update.current_frame_sn;
                 } else {
                     model.requestCurrentFrame();
@@ -172,6 +174,10 @@ model.present = function(proposal) {
         }
     }
 
+    /*
+     * Reset
+     */
+
     if(proposal.is_reset) {
         model.keyframe  = undefined;
         model.keyframe_sn = 0;
@@ -184,12 +190,19 @@ model.present = function(proposal) {
         model.queuedCumulativePatch = undefined; 
         model.incrementalPatchQueue = [];
         model.need_new_current_frame = false;
-
     }
+
+    /*
+     * Request Current Frame
+     */
 
     if(proposal.is_request_current_frame) {
         model.requestCurrentFrame();
     }
+
+    /*
+     * Still watching? 
+     */
 
     if(proposal.is_still_watching && model.updateTopic && state.isPageVisible(model)) {
         self.publish(
@@ -197,10 +210,17 @@ model.present = function(proposal) {
             {});
     }
 
+    /*
+     * Stop
+     */
+
     if(proposal.is_stop && model.updateTopic) {
-        const selector = "#" + model.televiewId;
-        self.publish("model/teleview/" + model.televiewId + "/event/stopped", true);
+        self.publish(cotonic.mqtt.fill("model/teleview/+televiewId/event/stopped", model), true);
     }
+
+    /*
+     * Page lifecycle event
+     */
 
     if(proposal.is_lifecycle_event) {
         if(model.page_state === "passive" && proposal.state === "hidden") {
@@ -248,8 +268,8 @@ model.requestCurrentFrame = function() {
  */
 
 view.display = function(representation) {
-    if(!representation) return;
-    if(!model.updateTopic) return;
+    if(!representation)
+        return;
 
     self.publish(model.updateTopic, representation);
 }
@@ -265,18 +285,25 @@ state.render = function(model) {
     state.nextAction(model) ;
 }
 
+state.isStarted = function(model) {
+    return !!model.updateTopic;
+}
+
+state.hasCurrentFrame = function(model) {
+    return !!model.current_frame;
+}
+
 state.isPageVisible = function(model) {
     return (model.page_state === "active" || model.page_state === "passive");
 }
 
 state.representation = function(model) {
+    if(!state.isStarted(model)) return;
+    if(!state.hasCurrentFrame(model)) return;
     if(!state.isPageVisible(model)) return;
 
-    if(!model.decoder) return;
-    if(!model.current_frame) return;
-
     return `<div id="${ model.id }" data-teleview-id="${ model.teleview_id }" data-renderer-id="${ model.renderer_id }">
-${ model.decoder.decode(model.current_frame) }
+${ fromUTF8(model.current_frame) }
 </div>`;
 
 }
@@ -310,6 +337,7 @@ actions.televiewEvent = function(m, a) {
 }
 
 actions.rendererEvent = function(m, a) {
+
     switch(a.evt_type) {
         case "update":
             actions.update(a.args[0], m.payload);
@@ -320,6 +348,11 @@ actions.rendererEvent = function(m, a) {
         case "still_watching":
             actions.still_watching();
             break;
+        case "down":
+            actions.rendererDown(m.payload.reason);
+            break;
+        default:
+            console.log("Unknown renderer event", a.evt_type);
     }
 }
 
@@ -420,9 +453,17 @@ actions.currentFrameRequestError = function(m) {
     console.log("Current_frame request error", m);
 }
 
+actions.rendererDown = function(reason) {
+    console.log("Renderer down");
+}
+
 /**
  * Helpers
  */
+
+const toUTF8 = (function() { const e = new TextEncoder(); return e.encode.bind(e); })();
+
+const fromUTF8 = (function() { const d = new TextDecoder(); return d.decode.bind(d); })();
 
 function televiewEventTopic(model) {
     return `bridge/origin/model/teleview/event/${ model.teleview_id }/+evt_type`;
@@ -432,7 +473,7 @@ function rendererEventTopic(model) {
     return `${ televiewEventTopic(model) }/${ model.renderer_id }/#args`;
 }
 
-function applyPatch(source, update, encoder) {
+function applyPatch(source, update) {
     if(update.patch.length === 0)
         return source;
 
@@ -466,7 +507,7 @@ function applyPatch(source, update, encoder) {
                 src_idx += v;
                 break;
             case "i": // insert new string into destination buffer.
-                const data = encoder.encode(v)
+                const data = toUTF8(v)
                 copyInto(array, dst_idx, data);
                 dst_idx += data.length;
                 break;
