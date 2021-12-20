@@ -1,8 +1,8 @@
 %% @author Maas-Maarten Zeeman <mmzeeman@xs4all.nl>
-%% @copyright 2019-2021 Maas-Maarten Zeeman
-%% @doc TeleView Differ.
+%% @copyright 2021 Maas-Maarten Zeeman
+%% @doc TeleView Renderer.
 
-%% Copyright 2019-2021 Maas-Maarten Zeeman 
+%% Copyright 2021 Maas-Maarten Zeeman 
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -16,9 +16,12 @@
 %% See the License for the specific language governing permissions and
 %% limitations under the License.
 
--module(z_teleview_differ).
--author("Maas-Maarten Zeeman <mmzeeman@xs4all.nl>").
+%%
+%% Responsible for rendering and diffing updated views... 
+%%
 
+-module(z_teleview_renderer).
+-author("Maas-Maarten Zeeman <mmzeeman@xs4all.nl>").
 -behaviour(gen_server).
 
 -define(DEFAULT_MIN_TIME, 0).
@@ -26,131 +29,130 @@
 
 -define(PATCH_OVERHEAD, 15).
 
-%% Generates diffs to update remote views with a minimum use of bandwith.
-
--record(state, {
-          teleview_id,
-          renderer_id,
-
-          % The current keyframe
-          keyframe :: undefined | binary(),
-          keyframe_sn = 0 :: non_neg_integer(),
-          last_time = 0 :: integer(),
-
-          % The current frame
-          current_frame :: undefined | binary(),
-          current_frame_sn = 0 :: non_neg_integer(),
-
-          new_frame :: undefined | binary(), % The frame which will be processed. 
-          processing = false :: boolean(),
-
-          min_time=?DEFAULT_MIN_TIME :: non_neg_integer(),        % minimum time between keyframes. 
-          max_time=?DEFAULT_MAX_TIME :: pos_integer() | infinite, % integer in ms | infinite
-
-          context :: zotonic:context()
-}).
-
-%% api
--export([
-    start_link/4,
-    new_frame/2,
-    sync_new_frame/2,
-
-    state/3
-]).
-
-
 -include_lib("zotonic_core/include/zotonic.hrl").
 
-%% gen_server callbacks
+-export([
+    start_link/4,
+    render/3,
+    render/4,
+
+    sync_render/4
+]).
+
+% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
 
-%%
-%% Api
-%% 
 
-start_link(TeleviewId, RendererId, Args, Context) -> 
-    %% Use a new empty context for the differ to make the 
-    %% published updates smaller.
-    DifferContext = z_context:new(Context),
+-record(state, {
+    teleview_id,
+    renderer_id,
+
+    args :: map(), % the arguments used to render
+    template :: binary(), % the template to use to render
+
+    % The current keyframe
+    keyframe :: undefined | binary(),
+    keyframe_sn = 0 :: non_neg_integer(),
+    last_time = 0 :: integer(),
+
+    % The current frame
+    current_frame :: undefined | binary(),
+    current_frame_sn = 0 :: non_neg_integer(),
+
+    min_time=?DEFAULT_MIN_TIME :: non_neg_integer(),        % minimum time between keyframes. 
+    max_time=?DEFAULT_MAX_TIME :: pos_integer() | infinite, % integer in ms | infinite
+
+    context :: zotonic:context() % the context to use to render with
+}).
+
+
+start_link(TeleviewId, RendererId, Args, Context) ->
+    RendererContext = renderer_context(Args, Context),
     gen_server:start_link({via, z_proc, {{?MODULE, TeleviewId, RendererId}, Context}},
                           ?MODULE,
-                          [TeleviewId, RendererId, Args, DifferContext], []).
-  
-new_frame(Pid, NewFrame) ->
-    gen_server:call(Pid, {new_frame, NewFrame}).
+                          [TeleviewId, RendererId, Args, RendererContext],
+                          []).
+ 
 
-sync_new_frame(Pid, NewFrame) ->
-    gen_server:call(Pid, {sync_new_frame, NewFrame}).
+% render with pid.
+render(Pid, Args, _Context) when is_pid(Pid) ->
+    gen_server:cast(Pid, {render, Args}).
 
-state(TeleviewId, RendererId, Context) ->
-    gen_server:call({via, z_proc, {{?MODULE, TeleviewId, RendererId}, Context}},
-                    state).
+% render teleview and renderer id. 
+render(TeleviewId, RendererId, Args, Context) ->
+    gen_server:cast({via, z_proc, {{?MODULE, TeleviewId, RendererId}, Context}}, {render, Args}).
+
+% Do a render and wait for the result from the differ. Return the differ state.
+sync_render(TeleviewId, RendererId, Args, Context) ->
+    gen_server:call({via, z_proc, {{?MODULE, TeleviewId, RendererId}, Context}}, {render, Args}).
 
 
 %%
 %% gen_server callbacks
 %%
 
-init([TeleviewId, RendererId, Args, Context]) ->
+init([TeleviewId, RendererId, #{ template := Template }=Args, Context]) ->
     process_flag(trap_exit, true),
 
     % When we restarted because of an error, the viewers should be reset.
     m_teleview:publish_event(reset, TeleviewId, RendererId, #{}, Context),
 
-    {ok, #state{min_time=maps:get(keyframe_min_time, Args, ?DEFAULT_MIN_TIME),
-                max_time=maps:get(keyframe_max_time, Args, ?DEFAULT_MAX_TIME),
-                teleview_id=TeleviewId,
-                renderer_id=RendererId,
-                context=Context}}.
+    Args1 = Args#{teleview_id => TeleviewId, renderer_id => RendererId},
 
-%
-handle_call({new_frame, _Frame}, _From, #state{processing=true}=State) ->
-    % Notify the caller that the differ is processing.
-    {reply, busy, State};
-handle_call({new_frame, Frame}, _From, #state{processing=false}=State) ->
-    case Frame =/= State#state.current_frame of
-        true ->
-            self() ! next_patch,
-            {reply, ok, State#state{new_frame=Frame, processing=true}};
-        false ->
-            {reply, ok, State}
-    end;
+    {ok, #state{
+            teleview_id=TeleviewId,
+            renderer_id=RendererId,
+                
+            template=Template,
+            args=Args1,
 
-handle_call({sync_new_frame, Frame}, _From, #state{}=State) ->
-    {_Patch, State1} = next_patch(Frame, State),
-    {reply, ok, State1#state{processing=false, new_frame=undefined}};
+            min_time=maps:get(keyframe_min_time, Args, ?DEFAULT_MIN_TIME),
+            max_time=maps:get(keyframe_max_time, Args, ?DEFAULT_MAX_TIME),
 
-handle_call(keyframe, _From, State) ->
-    {reply, State#state.keyframe, State};
+            context=Context}}.
 
-handle_call(current_frame, _From, State) ->
-    {reply, State#state.current_frame, State}.
 
-%
+handle_call({render, Args}, _From, State) ->
+    State1 = render_and_broadcast_patch(Args, State),
+    {reply, ok, State1}.
+
+handle_cast({render, A}, State) ->
+    %% Get the last render cast from the mailbox. Skip all others.
+    Args = last_render_cast(A),
+    State1 = render_and_broadcast_patch(Args, State),
+    {noreply, State1};
 handle_cast(Msg, State) ->
     {stop, {unknown_cast, Msg}, State}.
 
-%
-handle_info(next_patch, #state{processing=true, new_frame=Frame}=State) ->
-    {Patch, State1} = next_patch(Frame, State),
-    broadcast_patch(Patch, State1),
-    z_utils:flush_message(next_patch),
-    {noreply, State1#state{processing=false, new_frame=undefined}};
 
-handle_info(_Info, State) ->
+handle_info(Info, State) ->
+    ?DEBUG(Info),
     {noreply, State}.
+
+code_change(_OldVsn, State, _Extra) ->
+    {ok, State}.
 
 terminate(_Reason, State) ->
     z_teleview_state:delete_frames(State#state.teleview_id, State#state.renderer_id, State#state.context),
     ok.
 
-code_change(_OldVsn, State, _Extra) ->
-    {ok, State}.
+%%
+%% Helpers
+%%
 
-%%
-%% helpers
-%%
+render_and_broadcast_patch(Args, State) ->
+    RenderResult = render(Args, State),
+    {Patch, State1} = next_patch(RenderResult, State),
+    broadcast_patch(Patch, State1),
+    State1.
+
+renderer_context(Args, Context) ->
+    case z_notifier:first({teleview_renderer_init, Args}, Context) of
+        undefined ->
+            z_acl:anondo(Context);
+        #context{} = NewContext ->
+            NewContext
+    end.
 
 broadcast_patch({keyframe, Msg}, State) ->
     m_teleview:publish_event(update, keyframe,
@@ -167,6 +169,27 @@ broadcast_patch({cumulative, Msg}, State) ->
                              State#state.teleview_id, State#state.renderer_id,
                              Msg,
                              State#state.context).
+
+
+last_render_cast(Args) ->
+    receive
+        {'$gen_cast', {render, A}} -> last_render_cast(A)
+    after
+        0 -> Args
+    end.
+      
+% Render the template with the supplied vars and send the result to the differ.
+render(Args, #state{template=Template, args=RenderArgs, context=Context}) ->
+    Args1 = merge_args(RenderArgs, Args),
+    {IOList, _Context} = z_template:render_to_iolist(Template, Args1, Context),
+    z_convert:to_binary(IOList).
+
+%% Merge arguments used for rendering. 
+merge_args(Args, RenderArgs) when is_map(Args) andalso is_map(RenderArgs) ->
+    maps:merge(Args, RenderArgs);
+merge_args(Args, RenderArgs) when is_list(Args) andalso is_list(RenderArgs) ->
+    z_utils:props_merge(Args, RenderArgs).
+
 
 %% Create the next patch
 %%

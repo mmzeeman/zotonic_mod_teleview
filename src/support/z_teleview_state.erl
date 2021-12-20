@@ -96,7 +96,7 @@ keep_alive(TeleviewId, RendererId, Context) ->
 
 % @doc Return true when the renderer is already started.
 is_renderer_already_started(TeleviewId, RendererId, Context) ->
-    is_pid(z_proc:whereis({z_teleview_renderer_sup, TeleviewId, RendererId}, Context)).
+    is_pid(z_proc:whereis({z_teleview_renderer, TeleviewId, RendererId}, Context)).
 
 
 %%
@@ -201,7 +201,7 @@ handle_call({start_renderer, VaryArgs, Context}, _From,
 
             %% Trigger a synchronized render, and return the renderstate so it can be 
             %% put on the page immediately
-            ok = z_teleview_render:sync_render(State#state.id, RendererId, State#state.args, Context),
+            ok = z_teleview_renderer:sync_render(State#state.id, RendererId, State#state.args, Context),
             {reply, {ok, RendererId}, State#state{no_renderers_count=0, renderers=Renderers1}};
         {error, {already_started, _Pid}} ->
             {reply, {ok, RendererId}, State#state{no_renderers_count=0}};
@@ -379,7 +379,7 @@ trigger_check() ->
 
 trigger_render(TeleviewId, Renderers, Args, Context) ->
     maps:map(fun(_RendererSupPid, #{renderer_id := RendererId}) ->
-                     z_teleview_render:render(TeleviewId, RendererId, Args, Context)
+                     z_teleview_renderer:render(TeleviewId, RendererId, Args, Context)
              end,
              Renderers),
     ok.
