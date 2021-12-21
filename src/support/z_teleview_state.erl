@@ -186,11 +186,10 @@ init([Id, Supervisor, #{ topics := Topics }=Args, Context]) ->
 handle_call({start_renderer, VaryArgs, Context}, _From,
             #state{renderers_supervisor=RenderersSup,
                    args=TeleviewArgs}=State) when is_pid(RenderersSup) ->
-
-    RenderArgs = maps:merge(TeleviewArgs, VaryArgs),
-
     %% Generate a stable renderer id from the id of the teleview and the vary args of the renderer
     RendererId = mod_teleview:renderer_id(State#state.id, VaryArgs),
+
+    RenderArgs = maps:merge(TeleviewArgs, VaryArgs),
 
     case supervisor:start_child(RenderersSup, [RendererId, RenderArgs, Context]) of 
         {ok, Pid} ->

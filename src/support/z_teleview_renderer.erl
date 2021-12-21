@@ -100,6 +100,7 @@ sync_render(TeleviewId, RendererId, Args, Context) ->
 init([TeleviewId, RendererId, #{ template := Template }=Args, Context]) ->
     process_flag(trap_exit, true),
 
+
     % When we restarted because of an error, the viewers should be reset.
     m_teleview:publish_event(reset, TeleviewId, RendererId, #{}, Context),
 
@@ -126,7 +127,7 @@ handle_call(Msg, _From, State) ->
 
 handle_cast({render, A}, State) ->
     %% Get the last render cast from the mailbox. Skip all others.
-    Args = last_render_cast(A),
+    Args = last_render_cast_args(A),
     State1 = render_and_broadcast_patch(Args, State),
     {noreply, State1};
 handle_cast(Msg, State) ->
@@ -147,10 +148,15 @@ terminate(_Reason, State) ->
 %%
 
 render_and_broadcast_patch(Args, State) ->
-    RenderResult = render(Args, State),
-    {Patch, State1} = next_patch(RenderResult, State),
-    broadcast_patch(Patch, State1),
-    State1.
+    z_depcache:in_process(true),
+    try
+        RenderResult = render(Args, State),
+        {Patch, State1} = next_patch(RenderResult, State),
+        broadcast_patch(Patch, State1),
+        State1
+    after
+        z_depcache:in_process(false)
+    end.
 
 renderer_context(Args, Context) ->
     case z_notifier:first({teleview_renderer_init, Args}, Context) of
@@ -176,12 +182,12 @@ broadcast_patch({cumulative, Msg}, State) ->
                              Msg,
                              State#state.context).
 
-
-last_render_cast(Args) ->
+%% When there are more render casts in the mailbox, skip them, and
+%% take arguments from the last message.
+last_render_cast_args(Args) ->
     receive
         {'$gen_cast', {render, A}} ->
-            ?DEBUG({drop, render, A}),
-            last_render_cast(A)
+            last_render_cast_args(A)
     after
         0 -> Args
     end.
