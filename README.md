@@ -206,6 +206,6 @@ the state, and a collection of renderers. The renderers take care of producing a
 have its own ACL and language settings. The state process selects the right renderer for the client side of
 the teleview.
 
-![20191214105659](https://user-images.githubusercontent.com/1024972/70848092-c9d98b00-1e6c-11ea-90fb-13b88b98ad0a.png)
+
 
 
