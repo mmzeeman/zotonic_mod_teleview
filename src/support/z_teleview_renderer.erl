@@ -33,6 +33,9 @@
 
 -export([
     start_link/4,
+
+    is_already_started/3,
+
     render/3,
     render/4,
 
@@ -73,16 +76,19 @@ start_link(TeleviewId, RendererId, Args, Context) ->
                           [TeleviewId, RendererId, Args, RendererContext],
                           []).
  
+%% Return true if the renderer is already started.
+is_already_started(TeleviewId, RendererId, Context) ->
+    is_pid(z_proc:whereis({?MODULE, TeleviewId, RendererId}, Context)).
 
-% render with pid.
+% Render with pid.
 render(Pid, Args, _Context) when is_pid(Pid) ->
     gen_server:cast(Pid, {render, Args}).
 
-% render teleview and renderer id. 
+% Render teleview and renderer id. 
 render(TeleviewId, RendererId, Args, Context) ->
     gen_server:cast({via, z_proc, {{?MODULE, TeleviewId, RendererId}, Context}}, {render, Args}).
 
-% Do a render and wait for the result from the differ. Return the differ state.
+% Do a render and wait until the render is finished.
 sync_render(TeleviewId, RendererId, Args, Context) ->
     gen_server:call({via, z_proc, {{?MODULE, TeleviewId, RendererId}, Context}}, {render, Args}).
 
@@ -114,7 +120,9 @@ init([TeleviewId, RendererId, #{ template := Template }=Args, Context]) ->
 
 handle_call({render, Args}, _From, State) ->
     State1 = render_and_broadcast_patch(Args, State),
-    {reply, ok, State1}.
+    {reply, ok, State1};
+handle_call(Msg, _From, State) ->
+    {stop, {unknown_call, Msg}, State}.
 
 handle_cast({render, A}, State) ->
     %% Get the last render cast from the mailbox. Skip all others.
@@ -124,9 +132,7 @@ handle_cast({render, A}, State) ->
 handle_cast(Msg, State) ->
     {stop, {unknown_cast, Msg}, State}.
 
-
-handle_info(Info, State) ->
-    ?DEBUG(Info),
+handle_info(_Info, State) ->
     {noreply, State}.
 
 code_change(_OldVsn, State, _Extra) ->
@@ -173,7 +179,9 @@ broadcast_patch({cumulative, Msg}, State) ->
 
 last_render_cast(Args) ->
     receive
-        {'$gen_cast', {render, A}} -> last_render_cast(A)
+        {'$gen_cast', {render, A}} ->
+            ?DEBUG({drop, render, A}),
+            last_render_cast(A)
     after
         0 -> Args
     end.

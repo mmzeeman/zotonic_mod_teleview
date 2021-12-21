@@ -96,7 +96,7 @@ keep_alive(TeleviewId, RendererId, Context) ->
 
 % @doc Return true when the renderer is already started.
 is_renderer_already_started(TeleviewId, RendererId, Context) ->
-    is_pid(z_proc:whereis({z_teleview_renderer, TeleviewId, RendererId}, Context)).
+    z_teleview_renderer:is_already_started(TeleviewId, RendererId, Context).
 
 
 %%
