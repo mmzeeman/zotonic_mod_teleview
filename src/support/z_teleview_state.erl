@@ -96,7 +96,7 @@ keep_alive(TeleviewId, RendererId, Context) ->
 
 % @doc Return true when the renderer is already started.
 is_renderer_already_started(TeleviewId, RendererId, Context) ->
-    is_pid(z_proc:whereis({z_teleview_renderer_sup, TeleviewId, RendererId}, Context)).
+    z_teleview_renderer:is_already_started(TeleviewId, RendererId, Context).
 
 
 %%
@@ -157,14 +157,12 @@ get_keyframe(TeleviewId, RendererId, Context) ->
                keyframe_sn => Sn }
     end.
 
-
 % @doc Remove the current and keyframe of a renderer.
 delete_frames(TeleviewId, RendererId, Context) ->
     Table = table_name(Context),
     ets:delete(Table, {current_frame, TeleviewId, RendererId}),
     ets:delete(Table, {keyframe, TeleviewId, RendererId}),
     ok.
-
 
 %%
 %% gen_server callbacks.
@@ -186,11 +184,10 @@ init([Id, Supervisor, #{ topics := Topics }=Args, Context]) ->
 handle_call({start_renderer, VaryArgs, Context}, _From,
             #state{renderers_supervisor=RenderersSup,
                    args=TeleviewArgs}=State) when is_pid(RenderersSup) ->
-
-    RenderArgs = maps:merge(TeleviewArgs, VaryArgs),
-
     %% Generate a stable renderer id from the id of the teleview and the vary args of the renderer
     RendererId = mod_teleview:renderer_id(State#state.id, VaryArgs),
+
+    RenderArgs = maps:merge(TeleviewArgs, VaryArgs),
 
     case supervisor:start_child(RenderersSup, [RendererId, RenderArgs, Context]) of 
         {ok, Pid} ->
@@ -201,7 +198,7 @@ handle_call({start_renderer, VaryArgs, Context}, _From,
 
             %% Trigger a synchronized render, and return the renderstate so it can be 
             %% put on the page immediately
-            ok = z_teleview_render:sync_render(State#state.id, RendererId, State#state.args, Context),
+            ok = z_teleview_renderer:sync_render(State#state.id, RendererId, State#state.args, Context),
             {reply, {ok, RendererId}, State#state{no_renderers_count=0, renderers=Renderers1}};
         {error, {already_started, _Pid}} ->
             {reply, {ok, RendererId}, State#state{no_renderers_count=0}};
@@ -379,7 +376,7 @@ trigger_check() ->
 
 trigger_render(TeleviewId, Renderers, Args, Context) ->
     maps:map(fun(_RendererSupPid, #{renderer_id := RendererId}) ->
-                     z_teleview_render:render(TeleviewId, RendererId, Args, Context)
+                     z_teleview_renderer:render(TeleviewId, RendererId, Args, Context)
              end,
              Renderers),
     ok.
@@ -394,5 +391,4 @@ get_renderers_sup_pid([{z_teleview_renderers_sup, Pid, _, _}|_Rest]) ->
     Pid;
 get_renderers_sup_pid([_Child|Rest]) ->
     get_renderers_sup_pid(Rest).
-
 

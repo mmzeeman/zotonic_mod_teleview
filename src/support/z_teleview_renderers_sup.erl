@@ -45,11 +45,11 @@ init([Id]) ->
          intensity => 20,
          period => 10},
        [#{id => z_renderer_sup,
-          start => {z_teleview_renderer_sup, start_link, [Id]},
+          start => {z_teleview_renderer, start_link, [Id]},
           restart => transient,
           shutdown => infinity, 
-          type => supervisor,
-          modules => [z_teleview_renderer_sup]}]
+          type => worker,
+          modules => [z_teleview_renderer]}]
       }
     }.
 
