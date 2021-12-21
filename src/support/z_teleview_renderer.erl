@@ -92,14 +92,12 @@ render(TeleviewId, RendererId, Args, Context) ->
 sync_render(TeleviewId, RendererId, Args, Context) ->
     gen_server:call({via, z_proc, {{?MODULE, TeleviewId, RendererId}, Context}}, {render, Args}).
 
-
 %%
 %% gen_server callbacks
 %%
 
 init([TeleviewId, RendererId, #{ template := Template }=Args, Context]) ->
     process_flag(trap_exit, true),
-
 
     % When we restarted because of an error, the viewers should be reset.
     m_teleview:publish_event(reset, TeleviewId, RendererId, #{}, Context),
