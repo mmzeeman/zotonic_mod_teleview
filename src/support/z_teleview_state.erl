@@ -157,14 +157,12 @@ get_keyframe(TeleviewId, RendererId, Context) ->
                keyframe_sn => Sn }
     end.
 
-
 % @doc Remove the current and keyframe of a renderer.
 delete_frames(TeleviewId, RendererId, Context) ->
     Table = table_name(Context),
     ets:delete(Table, {current_frame, TeleviewId, RendererId}),
     ets:delete(Table, {keyframe, TeleviewId, RendererId}),
     ok.
-
 
 %%
 %% gen_server callbacks.
@@ -393,5 +391,4 @@ get_renderers_sup_pid([{z_teleview_renderers_sup, Pid, _, _}|_Rest]) ->
     Pid;
 get_renderers_sup_pid([_Child|Rest]) ->
     get_renderers_sup_pid(Rest).
-
 

@@ -57,7 +57,6 @@
 %% Model Gets
 %%
 
-
 %% Request for the keyframe
 m_get([Teleview, <<"keyframe">>, Renderer | Rest], _Msg, Context) ->
     TeleviewId = z_convert:to_integer(Teleview),

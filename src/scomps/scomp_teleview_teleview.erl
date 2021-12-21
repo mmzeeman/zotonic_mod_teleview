@@ -43,12 +43,6 @@ render(Params, _Vars, Context) ->
             z_teleview_acl:store_args([{{teleview, TeleviewId}, TeleviewArgs},
                                        {{renderer, TeleviewId, RendererId}, RendererArgs}], Context),
 
-            %% Securely store the arguments of the teleview so it can be restarted by
-            %% the worker when needed.
-            %% m_server_storage({teleview_renderer, TeleviewId, RendererId},
-            %%                  {teleview_renderer_args, TeleviewArgs, RendererArgs},
-            %%                  Context),
-
             render_teleview(#{ teleview_id => TeleviewId,
                                renderer_id => RendererId,
                                keyframe_min_time => keyframe_min_time(TeleviewArgs),
@@ -61,7 +55,6 @@ render(Params, _Vars, Context) ->
 %%
 %% Helpers
 %%
-%%
 
 ensure_renderer(undefined, undefined, _Context) ->
     {error, no_args};
@@ -73,7 +66,6 @@ ensure_renderer(TeleviewArgs, RendererArgs, Context) ->
         {error, _E}=Error ->
             Error
     end.
-
 
 render_teleview(#{ teleview_id := TeleviewId, renderer_id := RendererId }=RenderState, Params, Context) ->
     Context1 = z_context:set_language(undefined, Context),
@@ -115,5 +107,4 @@ current_frame(TeleviewId, RendererId, Context) ->
         _ ->
             <<>>
     end.
-
 

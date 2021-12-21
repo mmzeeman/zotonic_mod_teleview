@@ -45,7 +45,6 @@
 % gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
 
-
 -record(state, {
     teleview_id,
     renderer_id,
@@ -69,6 +68,7 @@
 }).
 
 
+% Start a new renderer
 start_link(TeleviewId, RendererId, Args, Context) ->
     RendererContext = renderer_context(Args, Context),
     gen_server:start_link({via, z_proc, {{?MODULE, TeleviewId, RendererId}, Context}},
@@ -158,6 +158,7 @@ render_and_broadcast_patch(Args, State) ->
         z_depcache:in_process(false)
     end.
 
+%% 
 renderer_context(Args, Context) ->
     case z_notifier:first({teleview_renderer_init, Args}, Context) of
         undefined ->
@@ -166,6 +167,7 @@ renderer_context(Args, Context) ->
             NewContext
     end.
 
+%%
 broadcast_patch({keyframe, Msg}, State) ->
     m_teleview:publish_event(update, keyframe,
                              State#state.teleview_id, State#state.renderer_id,
@@ -290,7 +292,11 @@ update_state_keyframe(NewFrame, CurrentTime, State) ->
     % Update the state normally
     State1 = update_state(NewFrame, State),
 
-    z_teleview_state:store_keyframe(State#state.teleview_id, State#state.renderer_id, NewFrame, State1#state.current_frame_sn, State#state.context),
+    z_teleview_state:store_keyframe(State#state.teleview_id,
+                                    State#state.renderer_id,
+                                    NewFrame,
+                                    State1#state.current_frame_sn,
+                                    State#state.context),
 
     % And keep this frame as the new keyframe
     State1#state{keyframe = NewFrame,
@@ -301,7 +307,10 @@ update_state_keyframe(NewFrame, CurrentTime, State) ->
 %% Update the state when a cumulative or incremental patch is produced.
 update_state(NewFrame, State) ->
     FrameSn = State#state.current_frame_sn + 1,
-    z_teleview_state:store_current_frame(State#state.teleview_id, State#state.renderer_id, NewFrame, FrameSn, State#state.context),
+    z_teleview_state:store_current_frame(State#state.teleview_id,
+                                         State#state.renderer_id,
+                                         NewFrame, FrameSn,
+                                         State#state.context),
 
     State#state{
       current_frame = NewFrame,
