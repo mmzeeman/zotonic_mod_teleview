@@ -77,7 +77,7 @@ model.present = function(proposal) {
             cotonic.mqtt.fill("model/ui/insert/+id", model),
             {
                 initialData: undefined,
-                inner: false,
+                inner: true,
                 priority: 10
             }
         );
@@ -302,10 +302,7 @@ state.representation = function(model) {
     if(!state.hasCurrentFrame(model)) return;
     if(!state.isPageVisible(model)) return;
 
-    return `<div id="${ model.id }" data-teleview-id="${ model.teleview_id }" data-renderer-id="${ model.renderer_id }">
-${ fromUTF8(model.current_frame) }
-</div>`;
-
+    return fromUTF8(model.current_frame);
 }
 
 state.nextAction = function(model) {
