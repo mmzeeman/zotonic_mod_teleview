@@ -92,7 +92,7 @@ render_teleview(#{ teleview_id := TeleviewId,
                                _ ->
                                    TeleviewElementArgs
                            end,
-    TeleviewElement = z_tags:render_tag(TeleviewWrapperElement, TeleviewElementArgs1 [ CurrentFrame ]),
+    TeleviewElement = z_tags:render_tag(TeleviewWrapperElement, TeleviewElementArgs1, [ CurrentFrame ]),
 
     %% Prepare script to start the client side worker which handles
     %% the teleview.
