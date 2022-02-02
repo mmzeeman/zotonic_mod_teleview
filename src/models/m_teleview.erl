@@ -84,7 +84,7 @@ m_get([Teleview, <<"current_frame">>, Renderer | Rest], _Msg, Context) ->
     end;
 
 m_get(V, _Msg, _Context) ->
-    lager:info("Unknown ~p lookup: ~p", [?MODULE, V]),
+    ?LOG_INFO("Unknown ~p lookup: ~p", [?MODULE, V]),
     {error, unknown_path}.
 
 %%
@@ -102,7 +102,7 @@ m_post([Teleview, <<"still_watching">>, Renderer], _Msg, Context) ->
             {error, eaccess}
     end;
 m_post(V, _Msg, _Context) ->
-    lager:info("Unknown ~p post: ~p", [?MODULE, V]),
+    ?LOG_INFO("Unknown ~p post: ~p", [?MODULE, V]),
     {error, unknown_path}.
 
 %%
