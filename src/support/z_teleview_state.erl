@@ -135,7 +135,7 @@ get_current_frame(TeleviewId, RendererId, Context) ->
                 {ok, TeleviewId, RendererId} ->
                     #{ state => restarting };
                 {error, Error} ->
-                    lager:warning("Could not restart renderer: ~p", [ Error ]),
+                    ?LOG_WARNING("Could not restart renderer: ~p", [ Error ]),
                     {error, restart_problem}
             end;
         [{_Key, Frame, Sn}] ->

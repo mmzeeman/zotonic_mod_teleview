@@ -179,11 +179,6 @@ renderer_count(Context) ->
 init(Args) ->
     {context, Context} = proplists:lookup(context, Args),
 
-    lager:md([
-              {site, z_context:site(Context)},
-              {module, ?MODULE}
-             ]),
-
     z_teleview_state:init_table(Context),
     z_teleview_acl:init_table(Context),
 
