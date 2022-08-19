@@ -231,7 +231,7 @@ model.present = function(proposal) {
         if(model.page_state === "hidden" && proposal.state === "passive") {
             const now = Date.now();
 
-            if(model.hidden_start_time !== undefined && ((now - model.hidden_start_time) > 300000)) {
+            if(model.hidden_start_time !== undefined && ((now - model.hidden_start_time) > 5000)) {
                 model.need_new_current_frame = true;
             }
 
