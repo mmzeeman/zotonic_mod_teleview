@@ -94,6 +94,8 @@ model.present = function(proposal) {
      * Update
      */
 
+    console.log(proposal.type);
+
     if(proposal.is_update) {
         switch(proposal.type) {
             case "keyframe":
@@ -115,6 +117,7 @@ model.present = function(proposal) {
                     // Ingore this frame, the current frame is newer.
                     console.log("Keyframe in update is older than current state.");
                 }
+
                 break;
             case "current_frame":
                 model.isCurrentFrameRequested = false;
@@ -134,7 +137,6 @@ model.present = function(proposal) {
                 }
 
                 break;
-
             case "cumulative": // Patch against the keyframe
                 if(model.keyframe && model.keyframe_sn === proposal.update.keyframe_sn) {
                     model.current_frame = applyPatch(model.keyframe, proposal.update);
