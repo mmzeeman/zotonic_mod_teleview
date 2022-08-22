@@ -254,15 +254,13 @@ model.present = function(proposal) {
      */
     if(proposal.is_current_frame_request_error) {
         console.log("current-frame-request-error", model);
-    }
-
-    if(proposal.is_current_frame_request_error && model.need_new_current_frame) {
         console.log("re-request-frame");
         model.isCurrentFrameRequested = false;
     }
 
     if(proposal.is_key_frame_request_error) {
         console.log("keyframe request error", model);
+        console.log("re-request-keyframe");
         model.isKeyframeRequested = false;
     }
 
