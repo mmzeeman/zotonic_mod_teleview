@@ -148,12 +148,11 @@ model.present = function(proposal) {
                 } else {
                     if(!model.isKeyframeRequested) {
                         model.isKeyframeRequested = true;
-                        self.call(
-                            cotonic.mqtt.fill("bridge/origin/model/teleview/get/+teleview_id/keyframe/+renderer_id", model),
-                            undefined,
-                            {qos: 1})
-                       .then(actions.keyframeResponse)
-                       .catch(actions.keyframeRequestError);
+                        self.call(cotonic.mqtt.fill("bridge/origin/model/teleview/get/+teleview_id/keyframe/+renderer_id", model),
+                                  undefined,
+                                  {qos: 1, timeout: 3000})
+                           .then(actions.keyframeResponse)
+                           .catch(actions.keyframeRequestError);
                     } 
 
                     // When the keyframe arrives, it could be that it is possible to use this patch 
@@ -281,7 +280,7 @@ model.requestCurrentFrame = function() {
 
     self.call(cotonic.mqtt.fill("bridge/origin/model/teleview/get/+teleview_id/current_frame/+renderer_id", model),
               undefined,
-              {qos: 1})
+              {qos: 1, timeout: 3000})
         .then(actions.currentFrameResponse)
         .catch(actions.currentFrameRequestError);
 }
