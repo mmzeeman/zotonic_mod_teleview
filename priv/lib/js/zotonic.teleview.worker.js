@@ -221,7 +221,6 @@ model.present = function(proposal) {
     /*
      * Page lifecycle event
      */
-
     if(proposal.is_lifecycle_event) {
         if(model.page_state === "passive" && proposal.state === "hidden") {
             model.hidden_start_time = Date.now(); 
@@ -246,6 +245,13 @@ model.present = function(proposal) {
         model.page_state = proposal.state;
     }
 
+    /*
+     * There was a current frame request error, and we need a new frame.
+     */
+    if(proposal.is_current_frame_request_error && model.need_new_current_frame) {
+        model.isCurrentFrameRequested = false;
+    }
+
     state.render(model);
 }
 
@@ -253,13 +259,14 @@ model.requestCurrentFrame = function() {
     if(model.isCurrentFrameRequested)
         return;
 
+    console.log("Request current frame");
+
     model.isCurrentFrameRequested = true;
     self.call(cotonic.mqtt.fill("bridge/origin/model/teleview/get/+teleview_id/current_frame/+renderer_id", model),
               undefined,
               {qos: 1})
         .then(actions.currentFrameResponse)
-        .catch(actions.currentFrameRequestError)
-    ;
+        .catch(actions.currentFrameRequestError);
 }
 
 
@@ -448,6 +455,7 @@ actions.currentFrameResponse = function(m) {
 
 actions.currentFrameRequestError = function(m) {
     console.log("Current_frame request error", m);
+    model.present({is_current_frame_request_error: true});
 }
 
 actions.rendererDown = function(reason) {

@@ -41,8 +41,6 @@
 
     start_renderer/3,
 
-    ensure_renderer/5,
-
     render/3,
     render/4,
 
@@ -112,25 +110,9 @@ start_renderer(TeleviewId, Args, Context) ->
         {ok, RendererId} ->
             z_teleview_acl:ensure_renderer_access(TeleviewId, RendererId, Context),
             {ok, RendererId};
-        Error ->
+        {error, _}=Error ->
             Error 
     end.
-
-% @doc make sure the teleview and renderer are running. Possibly starting new ones 
-% with the provided args.
-ensure_renderer(TeleviewId, RendererId, Args, Vary, Context) ->
-    case start_teleview(TeleviewId, Args, Context) of
-        {ok, TeleviewId} ->
-            case start_renderer(TeleviewId, Vary, Context) of
-                {ok, #{ renderer_id := RendererId, teleview_id := TeleviewId} = RendererState} ->
-                    RendererState;
-                _ ->
-                    {error, renderer_start_problem}
-            end;
-        _ ->
-            {error, teleview_start_problem}
-    end.
-
 
 % @doc Trigger a render of a specific renderer of a teleview.
 render(TeleviewId, RendererId, Context) -> 

@@ -77,8 +77,12 @@ m_get([Teleview, <<"current_frame">>, Renderer | Rest], _Msg, Context) ->
 
     case z_teleview_acl:is_view_allowed(TeleviewId, RendererId, Context) of
         true ->
-            Frame = z_teleview_state:get_current_frame(TeleviewId, RendererId, Context),
-            {ok, {Frame, Rest}};
+            case z_teleview_state:get_current_frame(TeleviewId, RendererId, Context) of
+                #{} = Frame -> 
+                    {ok, {Frame, Rest}};
+                {error, _} = Error ->
+                    Error
+            end;
         false ->
             {error, eaccess}
     end;
