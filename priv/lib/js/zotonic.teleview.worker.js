@@ -248,7 +248,12 @@ model.present = function(proposal) {
     /*
      * There was a current frame request error, and we need a new frame.
      */
+    if(proposal.is_current_frame_request_error) {
+        console.log("current-frame-request-error", model);
+    }
+
     if(proposal.is_current_frame_request_error && model.need_new_current_frame) {
+        console.log("re-request-frame");
         model.isCurrentFrameRequested = false;
     }
 
