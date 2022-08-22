@@ -199,7 +199,6 @@ model.present = function(proposal) {
     /*
      * Request Current Frame
      */
-
     if(proposal.is_request_current_frame) {
         model.requestCurrentFrame();
     }
@@ -255,12 +254,15 @@ model.present = function(proposal) {
     if(proposal.is_current_frame_request_error) {
         console.log("current-frame-request-error", model);
         console.log("re-request-frame");
+
         model.isCurrentFrameRequested = false;
+        model.need_new_current_frame = true;
     }
 
     if(proposal.is_key_frame_request_error) {
         console.log("keyframe request error", model);
         console.log("re-request-keyframe");
+
         model.isKeyframeRequested = false;
     }
 
@@ -268,12 +270,15 @@ model.present = function(proposal) {
 }
 
 model.requestCurrentFrame = function() {
+    console.log("request current frame", model);
+
     if(model.isCurrentFrameRequested)
         return;
 
     console.log("Request current frame");
 
     model.isCurrentFrameRequested = true;
+
     self.call(cotonic.mqtt.fill("bridge/origin/model/teleview/get/+teleview_id/current_frame/+renderer_id", model),
               undefined,
               {qos: 1})
