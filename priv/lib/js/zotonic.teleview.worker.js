@@ -149,7 +149,9 @@ model.present = function(proposal) {
                         self.call(
                             cotonic.mqtt.fill("bridge/origin/model/teleview/get/+teleview_id/keyframe/+renderer_id", model),
                             undefined,
-                            {qos: 1}).then(actions.keyframeResponse);
+                            {qos: 1})
+                       .then(actions.keyframeResponse)
+                       .catch(actions.keyframeRequestError);
                     } 
 
                     // When the keyframe arrives, it could be that it is possible to use this patch 
@@ -255,6 +257,11 @@ model.present = function(proposal) {
     if(proposal.is_current_frame_request_error && model.need_new_current_frame) {
         console.log("re-request-frame");
         model.isCurrentFrameRequested = false;
+    }
+
+    if(proposal.is_key_frame_request_error) {
+        console.log("keyframe request error", model);
+        model.isKeyframeRequested = false;
     }
 
     state.render(model);
@@ -462,6 +469,13 @@ actions.currentFrameRequestError = function(m) {
     console.log("Current_frame request error", m);
     model.present({is_current_frame_request_error: true});
 }
+
+actions.keyframeRequestError = function(m) {
+    console.log("Keyframe request error", m);
+    model.present({is_key_frame_request_error: true});
+    // model.present({is_current_frame_request_error: true});
+}
+
 
 actions.rendererDown = function(reason) {
     console.log("Renderer down");
