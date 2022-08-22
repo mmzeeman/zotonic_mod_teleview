@@ -471,6 +471,7 @@ actions.currentFrameResponse = function(m) {
 
 actions.currentFrameRequestError = function(m) {
     console.log("Current_frame request error", m);
+    console.log("Connections", cotonic.mqtt_session.findSession("origin").connections);
     model.present({is_current_frame_request_error: true});
 }
 
