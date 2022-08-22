@@ -94,7 +94,7 @@ model.present = function(proposal) {
      * Update
      */
 
-    console.log(proposal.type);
+    console.log("proposal", proposal);
 
     if(proposal.is_update) {
         switch(proposal.type) {
