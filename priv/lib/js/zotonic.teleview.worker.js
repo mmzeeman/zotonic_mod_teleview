@@ -94,8 +94,6 @@ model.present = function(proposal) {
      * Update
      */
 
-    console.log("proposal", proposal);
-
     if(proposal.is_update) {
         switch(proposal.type) {
             case "keyframe":
@@ -233,6 +231,7 @@ model.present = function(proposal) {
             const now = Date.now();
 
             if(model.hidden_start_time !== undefined && ((now - model.hidden_start_time) > 5000)) {
+                console.log("need new current frame");
                 model.need_new_current_frame = true;
             }
 
@@ -251,17 +250,12 @@ model.present = function(proposal) {
      * There was a current frame request error, and we need a new frame.
      */
     if(proposal.is_current_frame_request_error) {
-        console.log("current-frame-request-error", model);
-        console.log("re-request-frame");
-
         model.isCurrentFrameRequested = false;
+        console.log("current frame request error, still need new current frame");
         model.need_new_current_frame = true;
     }
 
     if(proposal.is_key_frame_request_error) {
-        console.log("keyframe request error", model);
-        console.log("re-request-keyframe");
-
         model.isKeyframeRequested = false;
     }
 
@@ -269,15 +263,12 @@ model.present = function(proposal) {
 }
 
 model.requestCurrentFrame = function() {
-    console.log("request current frame", model);
-
     if(model.isCurrentFrameRequested)
         return;
 
-    console.log("Request current frame");
-
     model.isCurrentFrameRequested = true;
 
+    console.log("Getting current frame from teleview");
     self.call(cotonic.mqtt.fill("bridge/origin/model/teleview/get/+teleview_id/current_frame/+renderer_id", model),
               undefined,
               {qos: 1})
@@ -470,16 +461,12 @@ actions.currentFrameResponse = function(m) {
 }
 
 actions.currentFrameRequestError = function(m) {
-    console.log("Current_frame request error", m);
     model.present({is_current_frame_request_error: true});
 }
 
 actions.keyframeRequestError = function(m) {
-    console.log("Keyframe request error", m);
     model.present({is_key_frame_request_error: true});
-    // model.present({is_current_frame_request_error: true});
 }
-
 
 actions.rendererDown = function(reason) {
     console.log("Renderer down");
