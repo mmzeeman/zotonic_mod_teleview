@@ -150,7 +150,7 @@ model.present = function(proposal) {
                         model.isKeyframeRequested = true;
                         self.call(cotonic.mqtt.fill("bridge/origin/model/teleview/get/+teleview_id/keyframe/+renderer_id", model),
                                   undefined,
-                                  {qos: 1, timeout: 3000})
+                                  {qos: 1})
                            .then(actions.keyframeResponse)
                            .catch(actions.keyframeRequestError);
                     } 
@@ -280,7 +280,7 @@ model.requestCurrentFrame = function() {
 
     self.call(cotonic.mqtt.fill("bridge/origin/model/teleview/get/+teleview_id/current_frame/+renderer_id", model),
               undefined,
-              {qos: 1, timeout: 3000})
+              {qos: 1})
         .then(actions.currentFrameResponse)
         .catch(actions.currentFrameRequestError);
 }
