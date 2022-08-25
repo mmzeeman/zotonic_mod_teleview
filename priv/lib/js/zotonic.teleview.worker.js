@@ -231,7 +231,6 @@ model.present = function(proposal) {
             const now = Date.now();
 
             if(model.hidden_start_time !== undefined && ((now - model.hidden_start_time) > 5000)) {
-                console.log("need new current frame");
                 model.need_new_current_frame = true;
             }
 
@@ -251,7 +250,6 @@ model.present = function(proposal) {
      */
     if(proposal.is_current_frame_request_error) {
         model.isCurrentFrameRequested = false;
-        console.log("current frame request error, still need new current frame");
         model.need_new_current_frame = true;
     }
 
@@ -268,7 +266,6 @@ model.requestCurrentFrame = function() {
 
     model.isCurrentFrameRequested = true;
 
-    console.log("Getting current frame from teleview");
     self.call(cotonic.mqtt.fill("bridge/origin/model/teleview/get/+teleview_id/current_frame/+renderer_id", model),
               undefined,
               {qos: 1})
@@ -469,6 +466,7 @@ actions.keyframeRequestError = function(m) {
 }
 
 actions.rendererDown = function(reason) {
+    // Communicate this to the surrounding div, and maybe sent a notification.
     console.log("Renderer down");
 }
 
