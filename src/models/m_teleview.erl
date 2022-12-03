@@ -35,7 +35,6 @@
     publish_event/6
 ]).
 
-%% @doc ...
 %%
 %% Interface update topics:
 %%

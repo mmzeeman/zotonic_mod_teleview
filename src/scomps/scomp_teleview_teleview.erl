@@ -76,12 +76,8 @@ render_teleview(#{ teleview_id := TeleviewId,
                  }=RenderState, Params, Context) ->
     Context1 = z_context:set_language(undefined, Context),
 
-    SrcUrl = z_lib_include:url([ "lib/js/zotonic.teleview.worker.js" ], Context1),
-    Base = proplists:get_value(base, Params, <<"cotonic/cotonic-worker.js">>),
-    BaseUrl = z_lib_include:url([ Base ], Context1),
-
     %% Prepare DOM
-    CurrentFrame = current_frame(TeleviewId, RendererId, Context),
+    CurrentFrame = current_frame(TeleviewId, RendererId, Context1),
     Id = z_ids:identifier(),
     TeleviewElementArgs = [{<<"id">>, Id},
                            {<<"data-renderer-id">>, RendererId},
@@ -92,23 +88,32 @@ render_teleview(#{ teleview_id := TeleviewId,
                                _ ->
                                    TeleviewElementArgs
                            end,
+
     TeleviewElement = z_tags:render_tag(TeleviewWrapperElement, TeleviewElementArgs1, [ CurrentFrame ]),
-
-    %% Prepare script to start the client side worker which handles
-    %% the teleview.
-    Args = maps:put(id, Id, RenderState),
-    ArgsJSON = z_json:encode(Args),
-    Name = proplists:get_value(name, Params, Id),
-    Spawn = [ <<"cotonic.spawn_named(\"">>, z_utils:js_escape(Name), "\", \"", SrcUrl, "\", \"", BaseUrl, "\",", ArgsJSON, ");" ],
-
-    Script = z_tags:render_tag(<<"script">>, [],
-                               [ <<"cotonic.ready.then(function() {">>, Spawn, <<"});">> ]),
+    Script = render_script(Id, Params, RenderState, Context1),
 
     {ok, [TeleviewElement, Script]}.
 
+render_script(Id, Params, RenderState, Context) ->
+    SrcUrl = z_lib_include:url([ <<"lib/js/zotonic.teleview.worker.js">> ], Context),
+    Base = proplists:get_value(base, Params, <<"cotonic/cotonic-worker.js">>),
+    BaseUrl = z_lib_include:url([ Base ], Context),
+    Name = proplists:get_value(name, Params, Id),
+    Args = z_json:encode(RenderState#{ id => Id }),
+
+    Spawn = [ <<"cotonic.spawn_named(\"">>,
+              z_utils:js_escape(Name), "\",
+              \"", SrcUrl, "\", \"", BaseUrl, "\",
+              ", Args, ");" ],
+
+    z_tags:render_tag(<<"script">>, [], [ <<"cotonic.ready.then(function() {">>, Spawn, <<"});">> ]).
+
+
 % @doc Get the televiews minimum time between keyframes
-keyframe_min_time(#{ keyframe_min_time := T }) -> T;
-keyframe_min_time(#{ }) -> 0.
+keyframe_min_time(#{ keyframe_min_time := T }) ->
+    T;
+keyframe_min_time(#{ }) ->
+    0.
 
 % @doc Get the televiews maximum time between keyframes
 keyframe_max_time(#{ keyframe_max_time := T }) -> T;

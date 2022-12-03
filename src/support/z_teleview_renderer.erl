@@ -199,10 +199,8 @@ render(Args, #state{template=Template, args=RenderArgs, context=Context}) ->
     z_convert:to_binary(IOList).
 
 %% Merge arguments used for rendering. 
-merge_args(Args, RenderArgs) when is_map(Args) andalso is_map(RenderArgs) ->
-    maps:merge(Args, RenderArgs);
-merge_args(Args, RenderArgs) when is_list(Args) andalso is_list(RenderArgs) ->
-    z_utils:props_merge(Args, RenderArgs).
+merge_args(Args, RenderArgs) ->
+    maps:merge(Args, RenderArgs).
 
 
 %% Create the next patch
