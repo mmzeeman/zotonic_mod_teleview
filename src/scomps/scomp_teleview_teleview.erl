@@ -16,7 +16,6 @@
 %% See the License for the specific language governing permissions and
 %% limitations under the License.
 
-
 -module(scomp_teleview_teleview).
 -behaviour(zotonic_scomp).
 
@@ -58,6 +57,7 @@ render(Params, _Vars, Context) ->
 %% Helpers
 %%
 
+% @doc Make sure the teleview renderer is started.
 ensure_renderer(undefined, undefined, _Context) ->
     {error, no_args};
 ensure_renderer(TeleviewArgs, RendererArgs, Context) ->
@@ -94,6 +94,7 @@ render_teleview(#{ teleview_id := TeleviewId,
 
     {ok, [TeleviewElement, Script]}.
 
+% @doc Render the script which starts the teleview worker.
 render_script(Id, Params, RenderState, Context) ->
     SrcUrl = z_lib_include:url([ <<"lib/js/zotonic.teleview.worker.js">> ], Context),
     Base = proplists:get_value(base, Params, <<"cotonic/cotonic-worker.js">>),
@@ -110,27 +111,31 @@ render_script(Id, Params, RenderState, Context) ->
 
 
 % @doc Get the televiews minimum time between keyframes
-keyframe_min_time(#{ keyframe_min_time := T }) ->
-    T;
+keyframe_min_time(#{ keyframe_min_time := Time }) ->
+    Time;
 keyframe_min_time(#{ }) ->
     0.
 
 % @doc Get the televiews maximum time between keyframes
-keyframe_max_time(#{ keyframe_max_time := T }) -> T;
-keyframe_max_time(#{ }) -> infinite.
+keyframe_max_time(#{ keyframe_max_time := Time }) ->
+    Time;
+keyframe_max_time(#{ }) ->
+    infinite.
 
 % @doc Get the teleview element wrapper class
-teleview_wrapper_class(#{ teleview_wrapper_class := Class }) -> Class;
-teleview_wrapper_class(#{ }) -> undefined.
+teleview_wrapper_class(#{ teleview_wrapper_class := Class }) ->
+    Class;
+teleview_wrapper_class(#{ }) ->
+    undefined.
 
 % @doc Get the teleview element wrapper class
-teleview_wrapper_element(#{ teleview_wrapper_element := Elt}) -> Elt;
-teleview_wrapper_element(#{ }) -> <<"div">>.
+teleview_wrapper_element(#{ teleview_wrapper_element := Elt}) ->
+    Elt;
+teleview_wrapper_element(#{ }) ->
+    <<"div">>.
 
 %
 % @doc Get the teleview element wrapper element 
-
-
 current_frame(TeleviewId, RendererId, Context) ->
     case z_teleview_state:get_current_frame(TeleviewId, RendererId, Context) of
         #{ current_frame := Frame } ->

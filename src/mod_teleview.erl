@@ -1,8 +1,8 @@
 %% @author Maas-Maarten Zeeman <mmzeeman@xs4all.nl>
-%% @copyright 2019-2021 Maas-Maarten Zeeman
+%% @copyright 2019-2022 Maas-Maarten Zeeman
 %% @doc Provides server rendered live updating views.
 
-%% Copyright 2019-2021 Maas-Maarten Zeeman 
+%% Copyright 2019-2022 Maas-Maarten Zeeman 
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -17,8 +17,8 @@
 %% limitations under the License.
 
 -module(mod_teleview).
-
 -author("Maas-Maarten Zeeman <mmzeeman@xs4all.nl>").
+
 -mod_title("TeleView").
 -mod_description("Provides server rendered live updating views").
 -mod_provides([teleview]).
