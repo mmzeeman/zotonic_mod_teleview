@@ -74,6 +74,19 @@ settings.
 In order to support that two different notifications can be setup on the 
 server side.
 
+## Technical Overview
+
+### Client Side
+
+![20230208144933](https://user-images.githubusercontent.com/1024972/217549349-e5ad5147-dbd9-4b9b-a7bb-e30ed303d991.png)
+
+### Server Side
+
+Server
+
+
+# Zotonic Server Side
+
 ```erlang
 
 observe_teleview_state_init({teleview_state_init, #{ type := <<"example">> }=Args}, Context) ->
