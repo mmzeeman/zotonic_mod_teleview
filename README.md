@@ -82,7 +82,15 @@ server side.
 
 ### Server Side
 
-Server
+Teleview Runs as a zotonic module. 
+
+*Zotonic High Level Architecture*
+
+![20230208151717](https://user-images.githubusercontent.com/1024972/217556825-6931f2ff-84b4-46e6-a545-ffef7fd429f4.png)
+
+*Teleview Module*
+
+[TODO]
 
 
 # Zotonic Server Side
