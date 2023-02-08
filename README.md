@@ -78,6 +78,11 @@ server side.
 
 ### Client Side
 
+The client side teleview component is build with (Cotonic)[https://cotonic.org]. This is a javascript library which acts as middleware.
+Different components can be added. These components can then communicate by using its broker. The broker provides a (MQTT)[https://mqtt.org]
+publish subscribe model. Cotonic makes it possible for a page to connect to multiple mqtt brokers. (Zotonic)[https://zotonic.com] uses
+the Cotonic library. Normally a page opens one mqtt connection to the server from which the page was loaded. This is called the *origin*.
+
 ![20230208144933](https://user-images.githubusercontent.com/1024972/217549349-e5ad5147-dbd9-4b9b-a7bb-e30ed303d991.png)
 
 ### Server Side
