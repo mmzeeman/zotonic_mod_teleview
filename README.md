@@ -92,7 +92,8 @@ Teleview Runs as a zotonic module.
 Each teleview has its own id and consists of a state process, which manages the subscription to the topics it listens too, and one or more
 renderer processes which can hold private vary properties used for rendering. 
 
-![20230209150249](https://user-images.githubusercontent.com/1024972/217834369-28e69d2e-029a-4d9f-9b08-8b06e878d300.png)
+
+![20230209171459](https://user-images.githubusercontent.com/1024972/217871548-a730156b-88f0-4eef-b207-98682fc19942.png)
 
 *Zotonic High Level Architecture*
 
