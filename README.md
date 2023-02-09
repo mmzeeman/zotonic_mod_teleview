@@ -88,10 +88,15 @@ the Cotonic library. Normally a page opens one mqtt connection to the server fro
 ### Server Side
 
 Teleview Runs as a zotonic module. 
+![20230208170245](https://user-images.githubusercontent.com/1024972/217584036-5e0d4718-a7d6-47ae-aa68-3cdd23b3aaf3.png)
 
 *Zotonic High Level Architecture*
 
 ![20230208151717](https://user-images.githubusercontent.com/1024972/217556825-6931f2ff-84b4-46e6-a545-ffef7fd429f4.png)
+
+*Anatomy of a Zotonic Module*
+
+![20230209142201](https://user-images.githubusercontent.com/1024972/217824424-241f74c8-29d8-42f9-9bc1-86c06afd1546.png)
 
 *Teleview Module*
 
