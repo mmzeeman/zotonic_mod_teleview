@@ -88,7 +88,11 @@ the Cotonic library. Normally a page opens one mqtt connection to the server fro
 ### Server Side
 
 Teleview Runs as a zotonic module. 
-![20230208170245](https://user-images.githubusercontent.com/1024972/217584036-5e0d4718-a7d6-47ae-aa68-3cdd23b3aaf3.png)
+
+Each teleview has its own id and consists of a state process, which manages the subscription to the topics it listens too, and one or more
+renderer processes which can hold private vary properties used for rendering. 
+
+![20230209150249](https://user-images.githubusercontent.com/1024972/217834369-28e69d2e-029a-4d9f-9b08-8b06e878d300.png)
 
 *Zotonic High Level Architecture*
 
@@ -119,8 +123,6 @@ observe_teleview_renderer_init({teleview_renderer_init, #{ type := <<"example">>
 observe_teleview_renderer_init(_InitArgs, _Context) ->
     undefined.
 ```
-    
-
 
 
 # Technical Details
