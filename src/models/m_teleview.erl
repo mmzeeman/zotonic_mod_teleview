@@ -113,7 +113,7 @@ m_post(V, _Msg, _Context) ->
 %%
 
 publish_event(Event, TeleviewId, Msg, Context) ->
-    z_mqtt:publish([model, teleview, event, TeleviewId, Event], Msg, z_acl:sudo(Context)).
+    z_mqtt:publish([model, teleview, event, TeleviewId, Event], Msg, #{ qos => 1, retain => true }, z_acl:sudo(Context)).
 
 publish_event(Event, TeleviewId, RendererId, Msg, Context) ->
     z_mqtt:publish([model, teleview, event, TeleviewId, Event, RendererId], Msg, z_acl:sudo(Context)).

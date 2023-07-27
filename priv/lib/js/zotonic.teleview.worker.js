@@ -14,7 +14,6 @@ const model = {
 
     keyframe: undefined,
     keyframe_sn: undefined,
-    isKeyframeRequested: false,
 
     current_frame: undefined,
     current_frame_sn: undefined,
@@ -59,12 +58,11 @@ model.present = function(proposal) {
 
         model.updateTopic = cotonic.mqtt.fill("model/ui/update/+id", model);
 
-        model.keyframe = (arg.keyframe === undefined) ? undefined : toUTF8(arg.keyframe);
-        model.keyframe_sn = arg.keyframe_sn;
-        model.isKeyframeRequested = false;
+        model.keyframe = undefined;
+        model.keyframe_sn = undefined;
 
-        model.current_frame = (arg.current_frame === undefined) ? undefined : toUTF8(arg.current_frame);
-        model.current_frame_sn = arg.current_frame_sn;
+        model.current_frame = undefined;
+        model.current_frame_sn = undefined;
         model.isCurrentFrameRequested = false;
 
         model.queuedCumulativePatch = undefined; 
@@ -97,7 +95,6 @@ model.present = function(proposal) {
     if(proposal.is_update) {
         switch(proposal.type) {
             case "keyframe":
-                model.isKeyframeRequested = false;
                 model.isCurrentFrameRequested = false;
 
                 if(model.keyframe_sn === undefined || proposal.update.keyframe_sn > model.keyframe_sn) {
@@ -127,7 +124,9 @@ model.present = function(proposal) {
                     while(model.incrementalPatchQueue.length) {
                         const p = model.incrementalPatchQueue.shift();
 
-                        if(model.current_frame_sn + 1 !== p.current_frame_sn) continue; // skip
+                        if(model.current_frame_sn + 1 !== p.current_frame_sn) {
+                            continue; // skip
+                        }
 
                         model.current_frame = applyPatch(model.current_frame, p);
                         model.current_frame_sn = p.current_frame_sn;
@@ -144,16 +143,7 @@ model.present = function(proposal) {
                         model.current_frame_sn = proposal.update.current_frame_sn;
                     }
                 } else {
-                    if(!model.isKeyframeRequested) {
-                        model.isKeyframeRequested = true;
-                        self.call(cotonic.mqtt.fill("bridge/origin/model/teleview/get/+teleview_id/keyframe/+renderer_id", model),
-                                  undefined,
-                                  {qos: 1})
-                           .then(actions.keyframeResponse)
-                           .catch(actions.keyframeRequestError);
-                    } 
-
-                    // When the keyframe arrives, it could be that it is possible to use this patch 
+                    // When a keyframe arrives, it could be that it is possible to use this patch 
                     model.queuedCumulativePatch = proposal.update;
                 }
 
@@ -182,7 +172,6 @@ model.present = function(proposal) {
     if(proposal.is_reset) {
         model.keyframe  = undefined;
         model.keyframe_sn = 0;
-        model.isKeyframeRequested = false;
 
         model.current_frame = undefined;
         model.current_frame_sn = 0;
@@ -251,10 +240,6 @@ model.present = function(proposal) {
     if(proposal.is_current_frame_request_error) {
         model.isCurrentFrameRequested = false;
         model.need_new_current_frame = true;
-    }
-
-    if(proposal.is_key_frame_request_error) {
-        model.isKeyframeRequested = false;
     }
 
     state.render(model);

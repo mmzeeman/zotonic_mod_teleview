@@ -166,21 +166,17 @@ renderer_context(Args, Context) ->
     end.
 
 %%
-broadcast_patch({keyframe, Msg}, State) ->
-    m_teleview:publish_event(update, keyframe,
-                             State#state.teleview_id, State#state.renderer_id,
-                             Msg,
-                             State#state.context);
-broadcast_patch({incremental, Msg}, State) ->
-    m_teleview:publish_event(update, incremental,
-                             State#state.teleview_id, State#state.renderer_id,
-                             Msg,
-                             State#state.context);
-broadcast_patch({cumulative, Msg}, State) ->
-    m_teleview:publish_event(update, cumulative,
-                             State#state.teleview_id, State#state.renderer_id,
-                             Msg,
-                             State#state.context).
+broadcast_patch({keyframe, Msg}, #state{teleview_id=TeleviewId, renderer_id=RendererId, context=Context}) ->
+    z_mqtt:publish([model, teleview, event, TeleviewId, update, RendererId, keyframe],
+                   Msg, #{ qos => 1, retain => true },  z_acl:sudo(Context));
+
+broadcast_patch({incremental, Msg}, #state{teleview_id=TeleviewId, renderer_id=RendererId, context=Context}) ->
+    z_mqtt:publish([model, teleview, event, TeleviewId, update, RendererId, incremental],
+                   Msg, #{ qos => 1 }, z_acl:sudo(Context));
+
+broadcast_patch({cumulative, Msg}, #state{teleview_id=TeleviewId, renderer_id=RendererId, context=Context}) ->
+    z_mqtt:publish([model, teleview, event, TeleviewId, update, RendererId, cumulative],
+                   Msg, z_acl:sudo(Context)).
 
 %% When there are more render casts in the mailbox, skip them, and
 %% take arguments from the last message.
