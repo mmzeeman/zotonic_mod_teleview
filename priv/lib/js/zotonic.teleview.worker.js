@@ -74,12 +74,11 @@ model.present = function(proposal) {
         self.publish(
             cotonic.mqtt.fill("model/ui/insert/+id", model),
             {
-                initialData: undefined,
+                initialData: arg.initial_content,
                 inner: true,
                 priority: 10
             }
         );
-
         self.subscribe(televiewEventTopic(model), actions.televiewEvent);
         self.subscribe(rendererEventTopic(model), actions.rendererEvent);
         self.subscribe("model/lifecycle/event/state", actions.lifecycleEvent);

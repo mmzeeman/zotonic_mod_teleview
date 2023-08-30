@@ -31,8 +31,9 @@ vary(_Params, _Context) -> nocache.
 render(Params, _Vars, Context) ->
     Topics = proplists:get_all_values(topic, Params),
     RendererArgs = proplists:get_value(vary, Params, #{}),
+    JSActivation = z_convert:to_bool(proplists:get_value(js_activation, Params, false)),
 
-    Args = maps:from_list(z_utils:prop_delete(topic, z_utils:prop_delete(vary, Params))),
+    Args = maps:without([topic, vary, js_activation], maps:from_list(Params)),
     TeleviewArgs = maps:put(topics, Topics, Args),
 
     case ensure_renderer(TeleviewArgs, RendererArgs, Context) of
@@ -42,7 +43,8 @@ render(Params, _Vars, Context) ->
             z_teleview_acl:store_args([{{teleview, TeleviewId}, TeleviewArgs},
                                        {{renderer, TeleviewId, RendererId}, RendererArgs}], Context),
 
-            render_teleview(#{ teleview_id => TeleviewId,
+            render_teleview(JSActivation,
+                            #{ teleview_id => TeleviewId,
                                renderer_id => RendererId,
                                teleview_wrapper_element => teleview_wrapper_element(TeleviewArgs),
                                teleview_wrapper_class => teleview_wrapper_class(TeleviewArgs),
@@ -69,7 +71,8 @@ ensure_renderer(TeleviewArgs, RendererArgs, Context) ->
             Error
     end.
 
-render_teleview(#{ teleview_id := TeleviewId,
+render_teleview(JSActivation,
+                #{ teleview_id := TeleviewId,
                    renderer_id := RendererId,
                    teleview_wrapper_element := TeleviewWrapperElement,
                    teleview_wrapper_class := TeleviewWrapperClass
@@ -78,6 +81,7 @@ render_teleview(#{ teleview_id := TeleviewId,
 
     %% Prepare DOM
     CurrentFrame = current_frame(TeleviewId, RendererId, Context1),
+
     Id = z_ids:identifier(),
     TeleviewElementArgs = [{<<"id">>, Id},
                            {<<"data-renderer-id">>, RendererId},
@@ -88,9 +92,16 @@ render_teleview(#{ teleview_id := TeleviewId,
                                _ ->
                                    TeleviewElementArgs
                            end,
-
-    TeleviewElement = z_tags:render_tag(TeleviewWrapperElement, TeleviewElementArgs1, [ CurrentFrame ]),
-    Script = render_script(Id, Params, RenderState, Context1),
+    {TeleviewElement, Script} = case JSActivation of
+                                    false ->
+                                        TvElt = z_tags:render_tag(TeleviewWrapperElement, TeleviewElementArgs1, [ CurrentFrame ]),
+                                        TvScript = render_script(Id, Params, RenderState, Context1),
+                                        {TvElt, TvScript};
+                                    true ->
+                                        TvElt = z_tags:render_tag(TeleviewWrapperElement, TeleviewElementArgs1, [ ]),
+                                        TvScript = render_script(Id, Params, RenderState#{ initial_content => CurrentFrame }, Context1),
+                                        {TvElt, TvScript}
+                                end,
 
     {ok, [TeleviewElement, Script]}.
 
