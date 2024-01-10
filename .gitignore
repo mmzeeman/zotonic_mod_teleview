@@ -1,3 +1,5 @@
 .rebar3
+*.DS_Store
+doc
 tags
 ebin
