@@ -73,7 +73,7 @@ start_link(Id, Supervisor, Args, Context) ->
 
 
 % @doc Start a renderer.
--spec start_renderer(integer(), map(), zotonic:context()) -> {ok, integer()} | {error, _}.
+-spec start_renderer(integer(), map(), z:context()) -> {ok, integer()} | {error, _}.
 start_renderer(TeleviewId, VaryArgs, Context) ->
 
     %% Generate a stable renderer id from the id of the teleview and the vary args of the renderer
@@ -176,7 +176,7 @@ init([Id, Supervisor, #{ topics := Topics }=Args, Context]) ->
     ok = subscribe(Topics, Context),
     ok = setup_tick(Args),
 
-    m_teleview:publish_event(started, Id, #{ }, Context),
+    m_teleview:publish_event(<<"started">>, Id, #{ }, Context),
     trigger_check(),
         
     {ok, #state{id=Id, teleview_supervisor=Supervisor, args=Args, context=Context}}.
@@ -244,14 +244,14 @@ handle_info(check, #state{renderers=Renderers, renderers_supervisor=Sup}=State) 
                          N when N < (LastCheck + ?RENDERER_WARN_TIME) ->
                              ok;
                          N when N < (LastCheck + ?RENDERER_EXPIRE_TIME) ->
-                             m_teleview:publish_event(still_watching,
+                             m_teleview:publish_event(<<"still_watching">>,
                                                       State#state.id, maps:get(renderer_id, RendererInfo),
                                                       #{},
                                                       State#state.context);
                          _ ->
                              case supervisor:terminate_child(Sup, Pid) of
                                  ok ->
-                                     m_teleview:publish_event(stopped,
+                                     m_teleview:publish_event(<<"stopped">>,
                                                               State#state.id, maps:get(renderer_id, RendererInfo),
                                                               #{},
                                                               State#state.context),
@@ -288,7 +288,7 @@ handle_info({'DOWN', _MonitorRef, process, Pid, Reason}, #state{renderers=Render
             {noreply, State};
         RendererInfo ->
             RendererId = maps:get(renderer_id, RendererInfo),
-            m_teleview:publish_event(down, State#state.id, RendererId, #{ reason => Reason }, State#state.context),
+            m_teleview:publish_event(<<"down">>, State#state.id, RendererId, #{ reason => Reason }, State#state.context),
             Renderers1 = maps:remove(Pid, Renderers),
             {noreply, State#state{renderers=Renderers1}}
     end;
@@ -307,7 +307,7 @@ handle_info(_Info, State) ->
     {noreply, State}.
 
 terminate(Reason, State) ->
-    m_teleview:publish_event(stopped, State#state.id, #{ reason => Reason }, State#state.context),
+    m_teleview:publish_event(<<"stopped">>, State#state.id, #{ reason => Reason }, State#state.context),
     ok.
 
 code_change(_OldVsn, State, _Extra) ->

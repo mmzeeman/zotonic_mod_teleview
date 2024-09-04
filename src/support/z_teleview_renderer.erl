@@ -64,7 +64,7 @@
     min_time=?DEFAULT_MIN_TIME :: non_neg_integer(),        % minimum time between keyframes. 
     max_time=?DEFAULT_MAX_TIME :: pos_integer() | infinite, % integer in ms | infinite
 
-    context :: zotonic:context() % the context to use to render with
+    context :: z:context() % the context to use to render with
 }).
 
 
@@ -96,11 +96,12 @@ sync_render(TeleviewId, RendererId, Args, Context) ->
 %% gen_server callbacks
 %%
 
+-spec init( list() ) -> {ok, term()}.
 init([TeleviewId, RendererId, #{ template := Template }=Args, Context]) ->
     process_flag(trap_exit, true),
 
     % When we restarted because of an error, the viewers should be reset.
-    m_teleview:publish_event(reset, TeleviewId, RendererId, #{}, Context),
+    m_teleview:publish_event(<<"reset">>, TeleviewId, RendererId, #{}, Context),
 
     Args1 = Args#{teleview_id => TeleviewId, renderer_id => RendererId},
 
@@ -167,15 +168,15 @@ renderer_context(Args, Context) ->
 
 %%
 broadcast_patch({keyframe, Msg}, #state{teleview_id=TeleviewId, renderer_id=RendererId, context=Context}) ->
-    z_mqtt:publish([model, teleview, event, TeleviewId, update, RendererId, keyframe],
+    z_mqtt:publish([<<"model">>, <<"teleview">>, <<"event">>, TeleviewId, <<"update">>, RendererId, <<"keyframe">>],
                    Msg, #{ qos => 1, retain => true },  z_acl:sudo(Context));
 
 broadcast_patch({incremental, Msg}, #state{teleview_id=TeleviewId, renderer_id=RendererId, context=Context}) ->
-    z_mqtt:publish([model, teleview, event, TeleviewId, update, RendererId, incremental],
+    z_mqtt:publish([<<"model">>, <<"teleview">>, <<"event">>, TeleviewId, <<"update">>, RendererId, <<"incremental">>],
                    Msg, #{ qos => 1 }, z_acl:sudo(Context));
 
 broadcast_patch({cumulative, Msg}, #state{teleview_id=TeleviewId, renderer_id=RendererId, context=Context}) ->
-    z_mqtt:publish([model, teleview, event, TeleviewId, update, RendererId, cumulative],
+    z_mqtt:publish([<<"model">>, <<"teleview">>, <<"event">>, TeleviewId, <<"update">>, RendererId, <<"cumulative">>],
                    Msg, z_acl:sudo(Context)).
 
 %% When there are more render casts in the mailbox, skip them, and

@@ -112,13 +112,16 @@ m_post(V, _Msg, _Context) ->
 %% Model Events
 %%
 
+-spec publish_event(binary(), integer(), term(), z:context()) -> ok | {error, term()}.
 publish_event(Event, TeleviewId, Msg, Context) ->
-    z_mqtt:publish([model, teleview, event, TeleviewId, Event], Msg, #{ qos => 1, retain => true }, z_acl:sudo(Context)).
+    z_mqtt:publish([<<"model">>, <<"teleview">>, <<"event">>, TeleviewId, Event], Msg, #{ qos => 1, retain => true }, z_acl:sudo(Context)).
 
+-spec publish_event(binary(), integer(), integer(), term(), z:context()) -> ok | {error, term()}.
 publish_event(Event, TeleviewId, RendererId, Msg, Context) ->
-    z_mqtt:publish([model, teleview, event, TeleviewId, Event, RendererId], Msg, z_acl:sudo(Context)).
+    z_mqtt:publish([<<"model">>, <<"teleview">>, <<"event">>, TeleviewId, Event, RendererId], Msg, z_acl:sudo(Context)).
 
+-spec publish_event(binary(), binary(), integer(), integer(), term(), z:context()) -> ok | {error, term()}.
 publish_event(Event, SubEvent, TeleviewId, RendererId, Msg, Context) ->
-    z_mqtt:publish([model, teleview, event, TeleviewId, Event, RendererId, SubEvent], Msg, z_acl:sudo(Context)).
+    z_mqtt:publish([<<"model">>, <<"teleview">>, <<"event">>, TeleviewId, Event, RendererId, SubEvent], Msg, z_acl:sudo(Context)).
 
 
