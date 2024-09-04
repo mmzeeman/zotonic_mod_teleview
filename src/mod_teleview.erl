@@ -104,7 +104,7 @@ stop_teleview(Id, Context) ->
 
 % @doc Start a new renderer belonging to a teleview. The passed args and context are
 % used for rendering. The teleview must already be started earlier.
--spec start_renderer(integer(), map(), zotonic:context()) -> {ok, integer()} | {error, _}.
+-spec start_renderer(integer(), map(), z:context()) -> {ok, integer()} | {error, _}.
 start_renderer(TeleviewId, Args, Context) ->
     case z_teleview_state:start_renderer(TeleviewId, Args, Context) of
         {ok, RendererId} ->
@@ -116,11 +116,12 @@ start_renderer(TeleviewId, Args, Context) ->
 
 % @doc Trigger a render of a specific renderer of a teleview.
 render(TeleviewId, RendererId, Context) -> 
-    z_teleview_render:render(TeleviewId, RendererId, Context).
+    z_teleview_renderer:render(TeleviewId, RendererId, Context).
+
 
 % @doc Trigger a render, with args, of a specific renderer of a teleview.
 render(TeleviewId, RendererId, Args, Context) -> 
-    z_teleview_render:render(TeleviewId, RendererId, Args, Context).
+    z_teleview_renderer:render(TeleviewId, RendererId, Args, Context).
 
 
 % @doc Check if the access to teleview and renderer topics is allowed
