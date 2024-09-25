@@ -103,7 +103,7 @@ render_teleview(JSActivation,
                                         {TvElt, TvScript}
                                 end,
 
-    {ok, [TeleviewElement, Script]}.
+    {ok, [TeleviewElement, {javascript, Script)}]}.
 
 % @doc Render the script which starts the teleview worker.
 render_script(Id, Params, RenderState, Context) ->
@@ -118,7 +118,9 @@ render_script(Id, Params, RenderState, Context) ->
               \"", SrcUrl, "\", \"", BaseUrl, "\",
               ", Args, ");" ],
 
-    z_tags:render_tag(<<"script">>, [], [ <<"cotonic.ready.then(function() {">>, Spawn, <<"});">> ]).
+    % Zotonic page init can happen before cotonic is ready.
+    % NOTE: change when zotonic page init called after cotonic is ready.
+    iolist_to_binary([ <<"cotonic.ready.then(() => {">>, Spawn, <<"});">> ]).
 
 
 % @doc Get the televiews minimum time between keyframes
