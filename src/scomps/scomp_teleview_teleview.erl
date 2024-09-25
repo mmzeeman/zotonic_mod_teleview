@@ -103,7 +103,7 @@ render_teleview(JSActivation,
                                         {TvElt, TvScript}
                                 end,
 
-    {ok, [TeleviewElement, {javascript, Script)}]}.
+    {ok, [TeleviewElement, {javascript, Script}]}.
 
 % @doc Render the script which starts the teleview worker.
 render_script(Id, Params, RenderState, Context) ->
