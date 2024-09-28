@@ -445,10 +445,6 @@ actions.currentFrameRequestError = function(m) {
     model.present({is_current_frame_request_error: true});
 }
 
-actions.keyframeRequestError = function(m) {
-    model.present({is_key_frame_request_error: true});
-}
-
 actions.rendererDown = function(reason) {
     // Communicate this to the surrounding div, and maybe sent a notification.
     console.log("Renderer down");

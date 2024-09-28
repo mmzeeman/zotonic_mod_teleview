@@ -1,8 +1,8 @@
 %% @author Maas-Maarten Zeeman <mmzeeman@xs4all.nl>
-%% @copyright 2019-2021 Maas-Maarten Zeeman
+%% @copyright 2019-2024 Maas-Maarten Zeeman
 %% @doc Teleview model.
 
-%% Copyright 2019-2021 Maas-Maarten Zeeman
+%% Copyright 2019-2024 Maas-Maarten Zeeman
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -123,5 +123,4 @@ publish_event(Event, TeleviewId, RendererId, Msg, Context) ->
 -spec publish_event(binary(), binary(), integer(), integer(), term(), z:context()) -> ok | {error, term()}.
 publish_event(Event, SubEvent, TeleviewId, RendererId, Msg, Context) ->
     z_mqtt:publish([<<"model">>, <<"teleview">>, <<"event">>, TeleviewId, Event, RendererId, SubEvent], Msg, z_acl:sudo(Context)).
-
 

@@ -1,8 +1,8 @@
 %% @author Maas-Maarten Zeeman <mmzeeman@xs4all.nl>
-%% @copyright 2019-2022 Maas-Maarten Zeeman
+%% @copyright 2019-2024 Maas-Maarten Zeeman
 %% @doc Provides server rendered live updating views.
 
-%% Copyright 2019-2022 Maas-Maarten Zeeman 
+%% Copyright 2019-2024 Maas-Maarten Zeeman 
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -58,11 +58,11 @@ start_link(Args) ->
     supervisor:start_link(
       {local, z_utils:name_for_site(?SERVER, Context)}, ?MODULE, Args).
 
-% @doc Generate a teleview id from the provided arguments
+% @doc Generate a stable teleview id from the provided arguments
 teleview_id(Args) ->
     erlang:phash2(Args).
 
-% @doc Generate a renderer id from the teleview_id and the provided arguments
+% @doc Generate a stable renderer id from the teleview_id and the provided arguments
 renderer_id(TeleviewId, Args) ->
     erlang:phash2({renderer, TeleviewId, Args}).
 
@@ -161,7 +161,7 @@ renderer_count(Context) ->
 
 init(Args) ->
     {context, Context} = proplists:lookup(context, Args),
-
+    z_context:logger_md(Context),
     z_teleview_state:init_table(Context),
     z_teleview_acl:init_table(Context),
 

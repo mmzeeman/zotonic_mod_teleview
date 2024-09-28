@@ -1,8 +1,8 @@
 %% @author Maas-Maarten Zeeman <mmzeeman@xs4all.nl>
-%% @copyright 2019-2021 Maas-Maarten Zeeman
+%% @copyright 2019-2024 Maas-Maarten Zeeman
 %% @doc TeleView State.
 
-%% Copyright 2019-2021 Maas-Maarten Zeeman 
+%% Copyright 2019-2024 Maas-Maarten Zeeman 
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -50,20 +50,20 @@
 -define(MAX_NO_RENDERERS_COUNT, 2).
 
 -record(state, {
-          id,
+    id,
 
-          args, 
+    args :: term(),
 
-          teleview_supervisor = undefined,  %% The supervisor of the teleview
+    teleview_supervisor = undefined,  %% The supervisor of the teleview
 
-          renderers_supervisor = undefined, %% The supervisor of all renderers
-          renderers = #{}, 
+    renderers_supervisor = undefined, %% The supervisor of all renderers
+    renderers = #{}, 
 
-          no_renderers_count = 0, %% Counter of how many times we saw that this
-                                  %% teleview has no renderers.
+    no_renderers_count = 0 :: non_neg_integer(), %% Counter of how many times we saw that this
+                                                 %% teleview has no renderers.
 
-          context
-         }).
+    context :: z:context()
+}).
 
 % @doc Start the state process.
 start_link(Id, Supervisor, Args, Context) ->
@@ -135,7 +135,8 @@ get_current_frame(TeleviewId, RendererId, Context) ->
                 {ok, TeleviewId, RendererId} ->
                     #{ state => restarting };
                 {error, Error} ->
-                    ?LOG_WARNING("Could not restart renderer: ~p", [ Error ]),
+                    ?LOG_WARNING(#{ text => "Could not restart renderer",
+                                    error => Error }),
                     {error, restart_problem}
             end;
         [{_Key, Frame, Sn}] ->

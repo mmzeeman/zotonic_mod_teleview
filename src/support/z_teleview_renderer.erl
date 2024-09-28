@@ -1,8 +1,8 @@
 %% @author Maas-Maarten Zeeman <mmzeeman@xs4all.nl>
-%% @copyright 2021 Maas-Maarten Zeeman
+%% @copyright 2019-2024 Maas-Maarten Zeeman
 %% @doc TeleView Renderer.
 
-%% Copyright 2021 Maas-Maarten Zeeman 
+%% Copyright 2024 Maas-Maarten Zeeman 
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -100,6 +100,8 @@ sync_render(TeleviewId, RendererId, Args, Context) ->
 init([TeleviewId, RendererId, #{ template := Template }=Args, Context]) ->
     process_flag(trap_exit, true),
 
+    z_context:logger_md(Context),
+
     % When we restarted because of an error, the viewers should be reset.
     m_teleview:publish_event(<<"reset">>, TeleviewId, RendererId, #{}, Context),
 
@@ -116,7 +118,6 @@ init([TeleviewId, RendererId, #{ template := Template }=Args, Context]) ->
             max_time=maps:get(keyframe_max_time, Args, ?DEFAULT_MAX_TIME),
 
             context=Context}}.
-
 
 handle_call({render, Args}, _From, State) ->
     State1 = render_and_broadcast_patch(Args, State),
