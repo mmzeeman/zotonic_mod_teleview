@@ -114,7 +114,7 @@ m_post(V, _Msg, _Context) ->
 
 -spec publish_event(binary(), integer(), term(), z:context()) -> ok | {error, term()}.
 publish_event(Event, TeleviewId, Msg, Context) ->
-    z_mqtt:publish([<<"model">>, <<"teleview">>, <<"event">>, TeleviewId, Event], Msg, #{ qos => 1, retain => true }, z_acl:sudo(Context)).
+    z_mqtt:publish([<<"model">>, <<"teleview">>, <<"event">>, TeleviewId, Event], Msg, #{ qos => 1 }, z_acl:sudo(Context)).
 
 -spec publish_event(binary(), integer(), integer(), term(), z:context()) -> ok | {error, term()}.
 publish_event(Event, TeleviewId, RendererId, Msg, Context) ->
