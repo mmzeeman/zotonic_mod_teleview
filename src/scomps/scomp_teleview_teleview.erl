@@ -23,6 +23,9 @@
 
 -include_lib("zotonic_core/include/zotonic.hrl").
 
+-define(DEFAULT_KEYFRAME_MIN_TIME, 0).
+-define(DEFAULT_KEYFRAME_MAX_TIME, infinite).
+
 vary(_Params, _Context) -> nocache.
 
 %% Make a place for the view to land and setup the worker which
@@ -31,9 +34,7 @@ vary(_Params, _Context) -> nocache.
 render(Params, _Vars, Context) ->
     Topics = proplists:get_all_values(topic, Params),
     RendererArgs = proplists:get_value(vary, Params, #{}),
-    JSActivation = z_convert:to_bool(proplists:get_value(js_activation, Params, false)),
-
-    Args = maps:without([topic, vary, js_activation], maps:from_list(Params)),
+    Args = maps:without([topic, vary], maps:from_list(Params)),
     TeleviewArgs = maps:put(topics, Topics, Args),
 
     case ensure_renderer(TeleviewArgs, RendererArgs, Context) of
@@ -43,8 +44,7 @@ render(Params, _Vars, Context) ->
             z_teleview_acl:store_args([{{teleview, TeleviewId}, TeleviewArgs},
                                        {{renderer, TeleviewId, RendererId}, RendererArgs}], Context),
 
-            render_teleview(JSActivation,
-                            #{ teleview_id => TeleviewId,
+            render_teleview(#{ teleview_id => TeleviewId,
                                renderer_id => RendererId,
                                teleview_wrapper_element => teleview_wrapper_element(TeleviewArgs),
                                teleview_wrapper_class => teleview_wrapper_class(TeleviewArgs),
@@ -71,16 +71,12 @@ ensure_renderer(TeleviewArgs, RendererArgs, Context) ->
             Error
     end.
 
-render_teleview(JSActivation,
-                #{ teleview_id := TeleviewId,
+render_teleview(#{ teleview_id := TeleviewId,
                    renderer_id := RendererId,
                    teleview_wrapper_element := TeleviewWrapperElement,
                    teleview_wrapper_class := TeleviewWrapperClass
                  }=RenderState, Params, Context) ->
     Context1 = z_context:set_language(undefined, Context),
-
-    %% Prepare DOM
-    CurrentFrame = current_frame(TeleviewId, RendererId, Context1),
 
     Id = z_ids:identifier(),
     TeleviewElementArgs = [{<<"id">>, Id},
@@ -92,16 +88,9 @@ render_teleview(JSActivation,
                                _ ->
                                    TeleviewElementArgs
                            end,
-    {TeleviewElement, Script} = case JSActivation of
-                                    false ->
-                                        TvElt = z_tags:render_tag(TeleviewWrapperElement, TeleviewElementArgs1, [ CurrentFrame ]),
-                                        TvScript = render_script(Id, Params, RenderState, Context1),
-                                        {TvElt, TvScript};
-                                    true ->
-                                        TvElt = z_tags:render_tag(TeleviewWrapperElement, TeleviewElementArgs1, [ ]),
-                                        TvScript = render_script(Id, Params, RenderState#{ initial_content => CurrentFrame }, Context1),
-                                        {TvElt, TvScript}
-                                end,
+    CurrentFrame = current_frame(TeleviewId, RendererId, Context1),
+    TeleviewElement = z_tags:render_tag(TeleviewWrapperElement, TeleviewElementArgs1, [ CurrentFrame ]),
+    Script = render_script(Id, Params, RenderState, Context1),
 
     {ok, [TeleviewElement, {javascript, Script}]}.
 
@@ -124,16 +113,28 @@ render_script(Id, Params, RenderState, Context) ->
 
 
 % @doc Get the televiews minimum time between keyframes
-keyframe_min_time(#{ keyframe_min_time := Time }) ->
+keyframe_min_time(#{ keyframe_min_time := Time }) when is_integer(Time) andalso Time >= 0 ->
     Time;
+keyframe_min_time(#{ keyframe_min_time := Time }) ->
+    ?LOG_WARNING(#{ text => "Teleview keyframe_min_time has wrong value (integer >= 0). Using default",
+                    value => Time,
+                    default => ?DEFAULT_KEYFRAME_MIN_TIME }),
+    ?DEFAULT_KEYFRAME_MIN_TIME;
 keyframe_min_time(#{ }) ->
-    0.
+    ?DEFAULT_KEYFRAME_MIN_TIME.
 
 % @doc Get the televiews maximum time between keyframes
-keyframe_max_time(#{ keyframe_max_time := Time }) ->
+keyframe_max_time(#{ keyframe_max_time := infinite }) ->
+    infinite;
+keyframe_max_time(#{ keyframe_max_time := Time }) when is_integer(Time) andalso Time >= 0 ->
     Time;
+keyframe_max_time(#{ keyframe_max_time := Time }) ->
+    ?LOG_WARNING(#{ text => "Teleview keyframe_max_time has wrong value (infinite | integer >= 0). Using default",
+                    value => Time,
+                    default => ?DEFAULT_KEYFRAME_MAX_TIME }),
+    ?DEFAULT_KEYFRAME_MAX_TIME;
 keyframe_max_time(#{ }) ->
-    infinite.
+    ?DEFAULT_KEYFRAME_MAX_TIME.
 
 % @doc Get the teleview element wrapper class
 teleview_wrapper_class(#{ teleview_wrapper_class := Class }) ->
