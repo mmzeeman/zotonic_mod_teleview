@@ -110,7 +110,7 @@ model.present = function(proposal) {
                     console.info("Teleview: Ignore keyframe, keyframe in update is older than current keyframe.",
                         {id: model.id,
                          keyframe_sn: model.keyframe_sn,
-                         update_keyframe_sn: proposal.update_keyframe_sn});
+                         update_keyframe_sn: proposal.update.keyframe_sn});
                 }
 
                 break;
