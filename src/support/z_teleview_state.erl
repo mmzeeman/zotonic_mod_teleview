@@ -196,6 +196,7 @@ handle_call({start_renderer, VaryArgs, Context}, _From,
             Renderers1 = maps:put(Pid, #{renderer_id => RendererId,
                                          last_check => z_utils:now(), 
                                          monitor_ref => MonitorRef}, State#state.renderers),
+            m_teleview:publish_event(<<"start">>, State#state.id, RendererId, #{ }, State#state.context),
 
             %% Trigger a synchronized render, and return the renderstate so it can be 
             %% put on the page immediately

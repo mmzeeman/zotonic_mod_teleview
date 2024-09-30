@@ -345,8 +345,14 @@ actions.rendererEvent = function(m, a) {
         case "still_watching":
             actions.still_watching();
             break;
+        case "start":
+            actions.rendererStart();
+            break;
         case "down":
             actions.rendererDown(m.payload.reason);
+            break;
+        case "stopped":
+            actions.rendererStopped(m.payload.reason);
             break;
         default:
             console.warn("Teleview: Unknown renderer event", {id: model.id, event_type: a.evt_type});
@@ -450,16 +456,26 @@ actions.currentFrameRequestError = function(m) {
     model.present({is_current_frame_request_error: true});
 }
 
+actions.rendererStart = function() {
+    // [TODO] The renderer is started. The process will publish a reset message.
+}
+
 actions.rendererDown = function(reason) {
+    // The renderer is down, due to an error, or shutdown. It will be restarted
+    // in case of an error.
     model.present({is_renderer_down: true, reason: reason});
+}
+
+actions.rendererStopped = function() {
+    // [TODO] The renderer is permanently stopped.
 }
 
 /**
  * Helpers
  */
 
-const toUTF8 = (function() { const e = new TextEncoder(); return e.encode.bind(e); })();
-const fromUTF8 = (function() { const d = new TextDecoder(); return d.decode.bind(d); })();
+const toUTF8 = (() => { const e = new TextEncoder(); return e.encode.bind(e); })();
+const fromUTF8 = (() => { const d = new TextDecoder(); return d.decode.bind(d); })();
 
 function televiewEventTopic(model) {
     return `bridge/origin/model/teleview/event/${ model.teleview_id }/+evt_type`;

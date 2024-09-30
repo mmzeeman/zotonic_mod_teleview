@@ -286,10 +286,8 @@ update_state_keyframe(NewFrame, CurrentTime, State) ->
     % Update the state normally
     State1 = update_state(NewFrame, State),
 
-    z_teleview_state:store_keyframe(State#state.teleview_id,
-                                    State#state.renderer_id,
-                                    NewFrame,
-                                    State1#state.current_frame_sn,
+    z_teleview_state:store_keyframe(State#state.teleview_id, State#state.renderer_id,
+                                    NewFrame, State1#state.current_frame_sn,
                                     State#state.context),
 
     % And keep this frame as the new keyframe
@@ -301,8 +299,7 @@ update_state_keyframe(NewFrame, CurrentTime, State) ->
 %% Update the state when a cumulative or incremental patch is produced.
 update_state(NewFrame, State) ->
     FrameSn = State#state.current_frame_sn + 1,
-    z_teleview_state:store_current_frame(State#state.teleview_id,
-                                         State#state.renderer_id,
+    z_teleview_state:store_current_frame(State#state.teleview_id, State#state.renderer_id,
                                          NewFrame, FrameSn,
                                          State#state.context),
 
@@ -354,5 +351,4 @@ patch_to_list([{skip, N} | Rest], Acc) ->
     patch_to_list(Rest, [N, s | Acc]);
 patch_to_list([{insert, Bin} | Rest], Acc) ->
     patch_to_list(Rest, [Bin, i | Acc]).
-
 
