@@ -70,13 +70,13 @@ m_get([Teleview, <<"keyframe">>, Renderer | Rest], _Msg, Context) ->
     end;
 
 %% Request for the current frame
-m_get([Teleview, <<"current_frame">>, Renderer | Rest], _Msg, Context) ->
+m_get([Teleview, <<"current_frame">>, Renderer | Rest], #{ payload := Payload }, Context) ->
     TeleviewId = z_convert:to_integer(Teleview),
     RendererId = z_convert:to_integer(Renderer),
 
     case z_teleview_acl:is_view_allowed(TeleviewId, RendererId, Context) of
         true ->
-            case z_teleview_state:get_current_frame(TeleviewId, RendererId, Context) of
+            case z_teleview_state:get_current_frame(TeleviewId, RendererId, Payload, Context) of
                 #{} = Frame -> 
                     {ok, {Frame, Rest}};
                 {error, _} = Error ->

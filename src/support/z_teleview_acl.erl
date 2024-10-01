@@ -1,8 +1,8 @@
 %% @author Maas-Maarten Zeeman <mmzeeman@xs4all.nl>
-%% @copyright 2021 Maas-Maarten Zeeman
+%% @copyright 2019-2024 Maas-Maarten Zeeman
 %% @doc Provides access control to teleview and renderer topics events.
 
-%% Copyright 2021 Maas-Maarten Zeeman 
+%% Copyright 2019-2024 Maas-Maarten Zeeman 
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -23,8 +23,8 @@
     cleanup_table/1,
     table/1,
 
-    store_args/2,
-    get_args/2,
+    %% store_args/2,
+    %% get_args/2,
 
     ensure_teleview_access/2,
     ensure_teleview_access/3,
@@ -47,35 +47,14 @@ init_table(Context) ->
     TableName = table_name(Context),
     ets:new(TableName, [named_table, set, {keypos, 1},
                         public,
-                        {write_concurrency, true}, {read_concurrency, true}]),
-
-    ArgsTable = args_table_name(Context),
-    ets:new(ArgsTable, [named_table, set, {keypos, 1},
-                        public,
                         {write_concurrency, true}, {read_concurrency, true}]).
 
-
-% @doc Store teleview arguments which are needed to restart them.
-store_args([], _Context) ->
-    ok;
-store_args(Objects, Context) ->
-    ArgsTable = args_table_name(Context),
-    ets:insert(ArgsTable, Objects).
-
-% @doc Get teleview arguments which are needed to restart them.
-get_args(Key, Context) ->
-    ArgsTable = args_table_name(Context),
-    case ets:lookup(ArgsTable, Key) of
-        [{Key, Args}] -> Args;
-        _ -> undefined
-    end.
 
 %% Cleanup the table, remove all entries from clients who are no longer connected, and
 %% expired items.
 cleanup_table(Context) ->
     cleanup_expired(Context),
     cleanup_sessions(Context),
-    cleanup_args(Context),
     ok.
 
 %% Ensure that the current session has access to the teleview.
@@ -194,38 +173,6 @@ cleanup_sessions(Context) ->
 
     ok.
 
-% Remove arg entries for televiews which are no longer used.
-cleanup_args(Context) ->
-    Table = table_name(Context),
-
-    %% Count all in use entries.
-    AllEntries = ets:foldl(fun({_, Entries, _}, Acc) ->
-                                   lists:foldl(fun(Key, Acc1) ->
-                                                       Count = maps:get(Key, Acc1, 0),
-                                                       Acc1#{ Key => Count + 1}
-                                               end,
-                                               Acc,
-                                               Entries)
-                           end,
-                           #{},
-                           Table),
-
-    %% Mark sweep
-    ArgsTable = args_table_name(Context),
-    MarkedForDeletion = ets:foldl(fun({Key, _}, Acc) ->
-                                          case maps:get(Key, AllEntries, 0) of
-                                              0 ->
-                                                  [Key | Acc];
-                                              _ ->
-                                                  Acc
-                                          end
-                                  end,
-                                  [],
-                                  ArgsTable),
-
-    [ ets:delete(ArgsTable, Key) || Key <- MarkedForDeletion ], 
-    ok.
-
 %% Return true iff the entry is found in the acl table.
 is_entry_found(undefined, _Entry, _Context) ->
     false;
@@ -246,9 +193,6 @@ is_entry_found(Key, Entry, Context) ->
 
 table_name(Context) ->
     z_utils:name_for_site(?MODULE, Context).      
-
-args_table_name(Context) ->
-    z_utils:name_for_site(z_teleview_acl_args, Context).      
 
 acl_key(Context) ->
     case z_context:session_id(Context) of

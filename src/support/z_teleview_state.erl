@@ -29,7 +29,7 @@
 
     init_table/1,
     store_current_frame/5,
-    get_current_frame/3,
+    get_current_frame/4,
 
     store_keyframe/5,
     get_keyframe/3, 
@@ -122,14 +122,14 @@ store_current_frame(TeleviewId, RendererId, Frame, Sn, Context) ->
     ets:insert(Table, {{current_frame, TeleviewId, RendererId}, Frame, Sn}).
 
 % @doc Get the current frame of the specified 
-get_current_frame(TeleviewId, RendererId, Context) ->
+get_current_frame(TeleviewId, RendererId, Pickle, Context) ->
     Table = table_name(Context),
     case ets:lookup(Table, {current_frame, TeleviewId, RendererId}) of
         [] ->
             %% The model already checked access to the teleview. 
-            %% try to restart it.
-            TeleviewArgs = z_teleview_acl:get_args({teleview, TeleviewId}, Context),
-            RendererArgs = z_teleview_acl:get_args({renderer, TeleviewId, RendererId}, Context), 
+            %% Try to restart it.
+            #{ teleview_args := TeleviewArgs,
+               renderer_args := RendererArgs } = z_utils:depickle(Pickle, Context),
 
             case scomp_teleview_teleview:ensure_renderer(TeleviewArgs, RendererArgs, Context) of
                 {ok, TeleviewId, RendererId} ->

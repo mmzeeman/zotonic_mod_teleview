@@ -25,6 +25,8 @@ const model = {
     max_time: undefined,
     min_time: undefined,
 
+    pickle: undefined,
+
     stop: false,
 
     page_state: "active",
@@ -69,6 +71,8 @@ model.present = function(proposal) {
 
         model.min_time = (arg.keyframe_min_time === undefined)?0:arg.keyframe_min_time;
         model.max_time = (arg.keyframe_max_time === undefined)?"infinite":arg.keyframe_max_time;
+
+        model.pickle = arg.pickle;
 
         self.publish( cotonic.mqtt.fill("model/ui/insert/+id", model), { inner: true, priority: 10 });
         self.subscribe(televiewEventTopic(model), actions.televiewEvent);
@@ -261,7 +265,7 @@ model.requestCurrentFrame = function() {
     model.isCurrentFrameRequested = true;
 
     self.call(cotonic.mqtt.fill("bridge/origin/model/teleview/get/+teleview_id/current_frame/+renderer_id", model),
-              undefined,
+              model.pickle,
               {qos: 1})
         .then(actions.currentFrameResponse)
         .catch(actions.currentFrameRequestError);
@@ -331,6 +335,8 @@ actions.televiewEvent = function(m, a) {
             // the current frame
             actions.requestCurrentFrame(true);
             break;
+        default:
+            console.warn("Teleview: Unknown teleview event", {id: model.id, event_type: a.evt_type});
     }
 }
 
