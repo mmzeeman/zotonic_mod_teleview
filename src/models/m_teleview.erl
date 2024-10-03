@@ -76,6 +76,7 @@ m_get([Teleview, <<"current_frame">>, Renderer | Rest], #{ payload := Payload },
 
     case z_teleview_acl:is_view_allowed(TeleviewId, RendererId, Context) of
         true ->
+            ?DEBUG("current_frame"),
             case z_teleview_state:get_current_frame(TeleviewId, RendererId, Payload, Context) of
                 #{} = Frame -> 
                     {ok, {Frame, Rest}};
@@ -100,7 +101,7 @@ m_post([Teleview, <<"still_watching">>, Renderer], _Msg, Context) ->
 
     case z_teleview_acl:is_view_allowed(TeleviewId, RendererId, Context) of
         true ->
-            z_teleview_state:keep_alive(TeleviewId, RendererId, Context);
+            z_teleview_renderer:keep_alive(TeleviewId, RendererId, Context);
         false ->
             {error, eaccess}
     end;

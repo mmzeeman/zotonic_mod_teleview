@@ -24,8 +24,12 @@
 -author("Maas-Maarten Zeeman <mmzeeman@xs4all.nl>").
 -behaviour(gen_server).
 
+
 -define(DEFAULT_MIN_TIME, 0).
 -define(DEFAULT_MAX_TIME, infinite).
+-define(INTERVAL_MSEC, 30000).
+-define(RENDERER_WARN_TIME, 60). % 5 min
+-define(RENDERER_EXPIRE_TIME, 420). % 7 min
 
 -define(PATCH_OVERHEAD, 15).
 
@@ -35,11 +39,10 @@
     start_link/4,
 
     is_already_started/3,
+    keep_alive/3,
 
-    render/3,
-    render/4,
-
-    sync_render/4
+    render/3, render/4,
+    sync_render/3, sync_render/4
 ]).
 
 % gen_server callbacks
@@ -48,6 +51,8 @@
 -record(state, {
     teleview_id,
     renderer_id,
+
+    sts :: integer(), % spawn timestamp of this renderer.
 
     args :: map(), % the arguments used to render
     template :: binary(), % the template to use to render
@@ -64,6 +69,8 @@
     min_time=?DEFAULT_MIN_TIME :: non_neg_integer(),        % minimum time between keyframes. 
     max_time=?DEFAULT_MAX_TIME :: pos_integer() | infinite, % integer in ms | infinite
 
+    last_check,
+
     context :: z:context() % the context to use to render with
 }).
 
@@ -78,7 +85,17 @@ start_link(TeleviewId, RendererId, Args, Context) ->
  
 %% Return true if the renderer is already started.
 is_already_started(TeleviewId, RendererId, Context) ->
-    is_pid(z_proc:whereis({?MODULE, TeleviewId, RendererId}, Context)).
+    case z_proc:whereis({?MODULE, TeleviewId, RendererId}, Context) of
+        Pid when is_pid(Pid) ->
+            ?DEBUG(Pid),
+            ?DEBUG(erlang:is_process_alive(Pid));
+        _ ->
+            false
+    end.
+
+% Keep the renderer alive.
+keep_alive(TeleviewId, RendererId, Context) ->
+    gen_server:cast({via, z_proc, {{?MODULE, TeleviewId, RendererId}, Context}}, keep_alive).
 
 % Render with pid.
 render(Pid, Args, _Context) when is_pid(Pid) ->
@@ -89,6 +106,8 @@ render(TeleviewId, RendererId, Args, Context) ->
     gen_server:cast({via, z_proc, {{?MODULE, TeleviewId, RendererId}, Context}}, {render, Args}).
 
 % Do a render and wait until the render is finished.
+sync_render(Pid, Args, _Context) ->
+    gen_server:call(Pid, {render, Args}).
 sync_render(TeleviewId, RendererId, Args, Context) ->
     gen_server:call({via, z_proc, {{?MODULE, TeleviewId, RendererId}, Context}}, {render, Args}).
 
@@ -99,25 +118,31 @@ sync_render(TeleviewId, RendererId, Args, Context) ->
 -spec init( list() ) -> {ok, term()}.
 init([TeleviewId, RendererId, #{ template := Template }=Args, Context]) ->
     process_flag(trap_exit, true),
-
     z_context:logger_md(Context),
 
     % When we restarted because of an error, the viewers should be reset.
+    m_teleview:publish_event(<<"start">>, TeleviewId, RendererId, #{}, Context), % [TODO] nog nodig
     m_teleview:publish_event(<<"reset">>, TeleviewId, RendererId, #{}, Context),
 
     Args1 = Args#{teleview_id => TeleviewId, renderer_id => RendererId},
 
-    {ok, #state{
-            teleview_id=TeleviewId,
-            renderer_id=RendererId,
-                
-            template=Template,
-            args=Args1,
+    trigger_check(),
 
-            min_time=maps:get(keyframe_min_time, Args, ?DEFAULT_MIN_TIME),
-            max_time=maps:get(keyframe_max_time, Args, ?DEFAULT_MAX_TIME),
+    InitialState = #state{
+                      sts=erlang:monotonic_time(millisecond),
+                      teleview_id=TeleviewId,
+                      renderer_id=RendererId,
+                      template=Template,
+                      args=Args1,
+                      min_time=maps:get(keyframe_min_time, Args, ?DEFAULT_MIN_TIME),
+                      max_time=maps:get(keyframe_max_time, Args, ?DEFAULT_MAX_TIME),
+                      last_check=z_utils:now(),
+                      context=Context},
 
-            context=Context}}.
+    %% Immediately do an initial render.
+    State = render_and_broadcast_patch(Args1, InitialState),
+
+    {ok, State}.
 
 handle_call({render, Args}, _From, State) ->
     State1 = render_and_broadcast_patch(Args, State),
@@ -130,8 +155,25 @@ handle_cast({render, A}, State) ->
     Args = last_render_cast_args(A),
     State1 = render_and_broadcast_patch(Args, State),
     {noreply, State1};
+
+handle_cast(keep_alive, State) ->
+    {noreply, State#state{ last_check = z_utils:now()}};
+
 handle_cast(Msg, State) ->
     {stop, {unknown_cast, Msg}, State}.
+
+handle_info(check, #state{last_check=LastCheck}=State) ->
+    trigger_check(),
+    case z_utils:now() of
+        Now when Now < (LastCheck + ?RENDERER_WARN_TIME) ->
+            %% Be silent...
+            {noreply, State};
+        Now when Now < (LastCheck + ?RENDERER_EXPIRE_TIME) ->
+            m_teleview:publish_event(<<"still_watching">>, State#state.teleview_id, State#state.renderer_id, #{}, State#state.context),
+            {noreply, State};
+        _ ->
+            {stop, normal, State}
+    end;
 
 handle_info(_Info, State) ->
     {noreply, State}.
@@ -139,7 +181,9 @@ handle_info(_Info, State) ->
 code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
 
-terminate(_Reason, State) ->
+terminate(Reason, State) ->
+    ?DEBUG({terminate, Reason}),
+    m_teleview:publish_event(<<"down">>, State#state.teleview_id, State#state.renderer_id, #{ reason => Reason }, State#state.context),
     z_teleview_state:delete_frames(State#state.teleview_id, State#state.renderer_id, State#state.context),
     ok.
 
@@ -203,17 +247,17 @@ merge_args(Args, RenderArgs) ->
 
 %% Create the next patch
 %%
-next_patch(NewFrame, #state{keyframe=undefined}=State) ->
+next_patch(NewFrame, #state{sts=Sts, keyframe=undefined}=State) ->
     State1 = update_state_keyframe(NewFrame, current_time(), State),
-    {{keyframe, #{ frame => NewFrame, keyframe_sn => State1#state.keyframe_sn}}, State1};
+    {{keyframe, #{ sts => Sts, frame => NewFrame, keyframe_sn => State1#state.keyframe_sn}}, State1};
 next_patch(NewFrame, #state{max_time=infinite}=State) ->
     do_patch(NewFrame, State);
-next_patch(NewFrame, #state{max_time=MaxTime}=State) ->
+next_patch(NewFrame, #state{sts=Sts, max_time=MaxTime}=State) ->
     CurrentTime = current_time(),
     case (CurrentTime - State#state.last_time) > MaxTime of
         true ->
             State1 = update_state_keyframe(NewFrame, CurrentTime, State),
-            {{keyframe, #{ frame => NewFrame, keyframe_sn => State1#state.keyframe_sn }}, State1 };
+            {{keyframe, #{ sts => Sts, frame => NewFrame, keyframe_sn => State1#state.keyframe_sn }}, State1 };
         false ->
             do_patch(NewFrame, State)
     end.
@@ -234,19 +278,21 @@ do_patch(NewFrame, #state{keyframe=KeyFrame}=State) ->
 
 %% Create a cumulative patch
 %%
-do_cumulative_patch(NewFrame, Patch, #state{min_time=0}=State) ->
+do_cumulative_patch(NewFrame, Patch, #state{sts=Sts, min_time=0}=State) ->
     %% When min_time == 0 there are no incremental frames, so the current_frame_sn is not added to the patch.
     State1 = update_state(NewFrame, State),
-    {{cumulative, #{patch => patch_to_list(Patch),
+    {{cumulative, #{sts => Sts,
+                    patch => patch_to_list(Patch),
                     keyframe_sn => State#state.keyframe_sn,
                     result_size => size(NewFrame)
                    }},
      State1};
-do_cumulative_patch(NewFrame, Patch, #state{}=State) ->
+do_cumulative_patch(NewFrame, Patch, #state{sts=Sts}=State) ->
     %% In this case it is possible that the viewers get incremental updates. The current_frame_sn
     %% must be included too.
     State1 = update_state(NewFrame, State),
-    {{cumulative, #{ patch => patch_to_list(Patch),
+    {{cumulative, #{ sts => Sts, 
+                     patch => patch_to_list(Patch),
                      keyframe_sn => State1#state.keyframe_sn,
                      current_frame_sn => State1#state.current_frame_sn,
                      result_size => size(NewFrame)
@@ -256,23 +302,26 @@ do_cumulative_patch(NewFrame, Patch, #state{}=State) ->
 %% Create either a keyframe, or an incremental patch, depending
 %% on the passed minimum time.
 %%
-do_complex_patch(NewFrame, #state{min_time=0}=State) ->
+do_complex_patch(NewFrame, #state{sts=Sts, min_time=0}=State) ->
     %% Keep it simple, just make a new keyframe
     State1 = update_state_keyframe(NewFrame, current_time(), State),
-    {{keyframe, #{frame => NewFrame, keyframe_sn => State1#state.keyframe_sn}}, State1};
-do_complex_patch(NewFrame, #state{}=State) ->
+    {{keyframe, #{sts => Sts, frame => NewFrame, keyframe_sn => State1#state.keyframe_sn}}, State1};
+do_complex_patch(NewFrame, #state{sts=Sts}=State) ->
     CurrentTime = current_time(),
 
     case (CurrentTime - State#state.last_time) > State#state.min_time of
         true ->
             %% The last keyframe was too long ago, just send one.
             State1 = update_state_keyframe(NewFrame, CurrentTime, State),
-            {{keyframe, #{frame => NewFrame, keyframe_sn => State1#state.keyframe_sn}}, State1};
+            {{keyframe, #{sts => Sts,
+                          frame => NewFrame,
+                          keyframe_sn => State1#state.keyframe_sn}}, State1};
         false ->
             %% Make a patch against the current_frame. (Assumes this patch is smaller)
             Patch = make_patch(State#state.current_frame, NewFrame),
             State1 = update_state(NewFrame, State),
-            {{incremental, #{ patch => patch_to_list(Patch),
+            {{incremental, #{ sts => Sts, 
+                              patch => patch_to_list(Patch),
                               keyframe_sn => State1#state.keyframe_sn,
                               current_frame_sn => State1#state.current_frame_sn,
                               result_size => size(NewFrame)
@@ -286,8 +335,11 @@ update_state_keyframe(NewFrame, CurrentTime, State) ->
     % Update the state normally
     State1 = update_state(NewFrame, State),
 
-    z_teleview_state:store_keyframe(State#state.teleview_id, State#state.renderer_id,
-                                    NewFrame, State1#state.current_frame_sn,
+    z_teleview_state:store_keyframe(State#state.sts,
+                                    State#state.teleview_id,
+                                    State#state.renderer_id,
+                                    NewFrame,
+                                    State1#state.current_frame_sn,
                                     State#state.context),
 
     % And keep this frame as the new keyframe
@@ -299,7 +351,8 @@ update_state_keyframe(NewFrame, CurrentTime, State) ->
 %% Update the state when a cumulative or incremental patch is produced.
 update_state(NewFrame, State) ->
     FrameSn = State#state.current_frame_sn + 1,
-    z_teleview_state:store_current_frame(State#state.teleview_id, State#state.renderer_id,
+    z_teleview_state:store_current_frame(State#state.sts,
+                                         State#state.teleview_id, State#state.renderer_id,
                                          NewFrame, FrameSn,
                                          State#state.context),
 
@@ -352,3 +405,5 @@ patch_to_list([{skip, N} | Rest], Acc) ->
 patch_to_list([{insert, Bin} | Rest], Acc) ->
     patch_to_list(Rest, [Bin, i | Acc]).
 
+trigger_check() ->
+    erlang:send_after(?INTERVAL_MSEC, self(), check).
