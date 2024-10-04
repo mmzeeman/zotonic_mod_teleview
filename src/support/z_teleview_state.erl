@@ -187,10 +187,6 @@ handle_call({start_renderer, VaryArgs, Context}, _From,
 
     case supervisor:start_child(RenderersSup, [RendererId, RenderArgs, Context]) of 
         {ok, _Pid} ->
-            %% Trigger a synchronized render, and return the renderstate so it can be 
-            %% put on the page immediately
-            %?DEBUG(State#state.args),
-            %ok = z_teleview_renderer:sync_render(Pid, State#state.args, Context),
             {reply, {ok, RendererId}, State#state{no_renderers_count=0}};
         {error, {already_started, _Pid}} ->
             {reply, {ok, RendererId}, State#state{no_renderers_count=0}};
@@ -320,12 +316,6 @@ trigger_render(Renderers, Args, Context) ->
                           skip
                   end,
                   Renderers),
-
-    %maps:map(fun(_RendererSupPid, #{renderer_id := RendererId}) ->
-    %                 z_teleview_renderer:render(TeleviewId, RendererId, Args, Context)
-    %         end,
-    %         Renderers),
-
     ok.
 
 
