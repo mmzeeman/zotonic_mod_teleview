@@ -8,7 +8,7 @@
 %% you may not use this file except in compliance with the License.
 %% You may obtain a copy of the License at
 %%
-%%     http://www.apache.org/licenses/LICENSE-2.0
+%%     https://www.apache.org/licenses/LICENSE-2.0
 %%
 %% Unless required by applicable law or agreed to in writing, software
 %% distributed under the License is distributed on an "AS IS" BASIS,
@@ -60,7 +60,6 @@
 
     no_renderers_count = 0 :: non_neg_integer(), %% Counter of how many times we saw that this
                                                  %% teleview has no renderers.
-
     context :: z:context()
 }).
 
@@ -79,7 +78,6 @@ start_renderer(TeleviewId, VaryArgs, Context) ->
 
     case is_renderer_already_started(TeleviewId, RendererId, Context) of
         true ->
-            ?DEBUG(already_started),
             {ok, RendererId};
         false ->
             %% Ensure access from this session to the teleview.
@@ -196,7 +194,6 @@ handle_call({start_renderer, VaryArgs, Context}, _From,
             #state{renderers_supervisor=RenderersSup,
                    args=TeleviewArgs}=State) when is_pid(RenderersSup) ->
 
-    ?DEBUG(call_start_renderer),
     %% Generate a stable renderer id from the id of the teleview and the vary args of the renderer
     RendererId = mod_teleview:renderer_id(State#state.id, VaryArgs),
     RenderArgs = maps:merge(TeleviewArgs, VaryArgs),

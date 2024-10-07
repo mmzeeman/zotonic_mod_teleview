@@ -85,13 +85,7 @@ start_link(TeleviewId, RendererId, Args, Context) ->
  
 %% Return true if the renderer is already started.
 is_already_started(TeleviewId, RendererId, Context) ->
-    case z_proc:whereis({?MODULE, TeleviewId, RendererId}, Context) of
-        Pid when is_pid(Pid) ->
-            ?DEBUG(Pid),
-            ?DEBUG(erlang:is_process_alive(Pid));
-        _ ->
-            false
-    end.
+    is_pid(z_proc:whereis({?MODULE, TeleviewId, RendererId}, Context)).
 
 % Keep the renderer alive.
 keep_alive(TeleviewId, RendererId, Context) ->
@@ -121,7 +115,6 @@ init([TeleviewId, RendererId, #{ template := Template }=Args, Context]) ->
     z_context:logger_md(Context),
 
     % When we restarted because of an error, the viewers should be reset.
-    m_teleview:publish_event(<<"start">>, TeleviewId, RendererId, #{}, Context), % [TODO] nog nodig
     m_teleview:publish_event(<<"reset">>, TeleviewId, RendererId, #{}, Context),
 
     Args1 = Args#{teleview_id => TeleviewId, renderer_id => RendererId},
@@ -182,7 +175,6 @@ code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
 
 terminate(Reason, State) ->
-    ?DEBUG({terminate, Reason}),
     m_teleview:publish_event(<<"down">>, State#state.teleview_id, State#state.renderer_id, #{ reason => Reason }, State#state.context),
     z_teleview_state:delete_frames(State#state.teleview_id, State#state.renderer_id, State#state.context),
     ok.
@@ -243,7 +235,6 @@ render(Args, #state{template=Template, args=RenderArgs, context=Context}) ->
 %% Merge arguments used for rendering. 
 merge_args(Args, RenderArgs) ->
     maps:merge(Args, RenderArgs).
-
 
 %% Create the next patch
 %%
