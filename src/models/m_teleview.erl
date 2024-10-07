@@ -66,25 +66,38 @@ m_get([Teleview, <<"keyframe">>, Renderer | Rest], _Msg, Context) ->
             Frame = z_teleview_state:get_keyframe(TeleviewId, RendererId, Context),
             {ok, {Frame, Rest}};
         false ->
+            ?DEBUG({eaccess, keyframe, TeleviewId, RendererId}),
             {error, eaccess}
     end;
 
 %% Request for the current frame
-m_get([Teleview, <<"current_frame">>, Renderer | Rest], #{ payload := Payload }, Context) ->
+m_get([Teleview, <<"current_frame">>, Renderer | Rest], #{ payload := Payload }, Context) when is_binary(Payload) ->
+    TeleviewId = z_convert:to_integer(Teleview),
+    RendererId = z_convert:to_integer(Renderer),
+
+    case z_teleview_state:get_current_frame(TeleviewId, RendererId, Payload, Context) of
+        #{} = Frame -> 
+            {ok, {Frame, Rest}};
+        {error, _} = Error ->
+            Error
+    end;
+m_get([Teleview, <<"current_frame">>, Renderer | Rest], #{ }, Context) ->
     TeleviewId = z_convert:to_integer(Teleview),
     RendererId = z_convert:to_integer(Renderer),
 
     case z_teleview_acl:is_view_allowed(TeleviewId, RendererId, Context) of
         true ->
-            case z_teleview_state:get_current_frame(TeleviewId, RendererId, Payload, Context) of
+            case z_teleview_state:get_current_frame(TeleviewId, RendererId, Context) of
                 #{} = Frame -> 
                     {ok, {Frame, Rest}};
                 {error, _} = Error ->
                     Error
             end;
         false ->
+            ?DEBUG({eaccess, current_frame, TeleviewId, RendererId}),
             {error, eaccess}
     end;
+
 
 m_get(V, _Msg, _Context) ->
     ?LOG_INFO("Unknown ~p lookup: ~p", [?MODULE, V]),
@@ -102,6 +115,7 @@ m_post([Teleview, <<"still_watching">>, Renderer], _Msg, Context) ->
         true ->
             z_teleview_renderer:keep_alive(TeleviewId, RendererId, Context);
         false ->
+            ?DEBUG({eaccess, still_watching, TeleviewId, RendererId}),
             {error, eaccess}
     end;
 m_post(V, _Msg, _Context) ->

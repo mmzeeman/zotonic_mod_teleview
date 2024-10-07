@@ -27,7 +27,8 @@
 
     init_table/1,
     store_current_frame/6,
-    get_current_frame/4,
+
+    get_current_frame/3, get_current_frame/4, get_current_frame/5,
 
     store_keyframe/6,
     get_keyframe/3, 
@@ -114,16 +115,33 @@ store_current_frame(SpawnTimestamp, TeleviewId, RendererId, Frame, Sn, Context) 
     Table = table_name(Context),
     ets:insert(Table, {{current_frame, TeleviewId, RendererId}, SpawnTimestamp, Frame, Sn}).
 
-% @doc Get the current frame of the specified 
-get_current_frame(TeleviewId, RendererId, Pickle, Context) ->
+% @doc Get the current frame of the specified teleview and rederer.
+get_current_frame(TeleviewId, RendererId, Context) ->
     Table = table_name(Context),
     case ets:lookup(Table, {current_frame, TeleviewId, RendererId}) of
         [] ->
-            %% The model already checked access to the teleview. 
-            %% Try to restart it.
-            #{ teleview_args := TeleviewArgs,
-               renderer_args := RendererArgs } = z_utils:depickle(Pickle, Context),
+            {error, enoent};
+        [{_Key, SpawnTimestamp, Frame, Sn}] ->
+            #{ state => ok, sts => SpawnTimestamp, current_frame => Frame, current_frame_sn => Sn }
+    end.
 
+% @doc Get the current frame of the specified teleview and rederer. By passing the pickle the
+% server (re)-starts the renderer when it is not running.
+get_current_frame(TeleviewId, RendererId, Pickle, Context) ->
+    case get_current_frame(TeleviewId, RendererId, Context) of
+        {error, enoent} ->
+            #{ teleview_id := TeleviewId, renderer_id := RendererId,
+               teleview_args := TeleviewArgs, renderer_args := RendererArgs } = z_utils:depickle(Pickle, Context),
+            get_current_frame(TeleviewId, RendererId, TeleviewArgs, RendererArgs, Context);
+        Map when is_map(Map) ->
+            Map
+    end.
+
+get_current_frame(TeleviewId, RendererId, TeleviewArgs, RendererArgs, Context) ->
+    case get_current_frame(TeleviewId, RendererId, Context) of
+        Map when is_map(Map) ->
+            Map;
+        {error, enoent} ->
             case scomp_teleview_teleview:ensure_renderer(TeleviewArgs, RendererArgs, Context) of
                 {ok, TeleviewId, RendererId} ->
                     #{ state => restarting };
@@ -131,9 +149,7 @@ get_current_frame(TeleviewId, RendererId, Pickle, Context) ->
                     ?LOG_WARNING(#{ text => "Could not restart renderer",
                                     error => Error }),
                     {error, restart_problem}
-            end;
-        [{_Key, SpawnTimestamp, Frame, Sn}] ->
-            #{ state => ok, sts => SpawnTimestamp, current_frame => Frame, current_frame_sn => Sn }
+            end
     end.
 
 % @doc Store the keyframe of a renderer.

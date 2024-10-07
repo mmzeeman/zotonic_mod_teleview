@@ -40,7 +40,9 @@ render(Params, _Vars, Context) ->
 
     case ensure_renderer(TeleviewArgs, RendererArgs, Context) of
         {ok, TeleviewId, RendererId} ->
-            Pickle = z_utils:pickle(#{ teleview_args => TeleviewArgs,
+            Pickle = z_utils:pickle(#{ teleview_id => TeleviewId,
+                                       renderer_id => RendererId, 
+                                       teleview_args => TeleviewArgs,
                                        renderer_args => RendererArgs }, Context),
             render_teleview(#{ teleview_id => TeleviewId,
                                renderer_id => RendererId,

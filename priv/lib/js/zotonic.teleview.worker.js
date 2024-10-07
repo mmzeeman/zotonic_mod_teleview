@@ -48,7 +48,6 @@ model.present = function(proposal) {
     /*
      * Start
      */
-
     if(proposal.is_start) {
         const arg = proposal.arg;
 
@@ -89,7 +88,6 @@ model.present = function(proposal) {
     /*
      * Reset
      */
-
     if(proposal.is_reset || (proposal.is_update && proposal.update.sts > model.sts)) {
         console.log("reset - new stuff is coming...");
 
@@ -105,11 +103,9 @@ model.present = function(proposal) {
         model.incrementalPatchQueue = [];
     }
 
-
     /*
      * Update
      */
-
     if(proposal.is_update) {
         if(model.sts === undefined || proposal.update.sts === model.sts) {
         switch(proposal.type) {
