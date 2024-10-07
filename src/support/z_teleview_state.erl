@@ -42,10 +42,6 @@
 -include_lib("zotonic_core/include/zotonic.hrl").
 
 -define(INTERVAL_MSEC, 30000).
-
--define(RENDERER_WARN_TIME, 60). % 5 min
--define(RENDERER_EXPIRE_TIME, 420). % 7 min
-
 -define(MAX_NO_RENDERERS_COUNT, 2).
 
 -record(state, {
@@ -55,8 +51,6 @@
 
     teleview_supervisor = undefined,  %% The supervisor of the teleview
     renderers_supervisor = undefined, %% The supervisor of all renderers
-
-    %% renderers = #{}, 
 
     no_renderers_count = 0 :: non_neg_integer(), %% Counter of how many times we saw that this
                                                  %% teleview has no renderers.
@@ -330,7 +324,6 @@ trigger_render(Renderers, Args, Context) ->
                   end,
                   Renderers),
     ok.
-
 
 % Get renderers supervisor pid from the supervisor.
 get_renderers_sup_pid(SupervisorPid) when is_pid(SupervisorPid) ->
