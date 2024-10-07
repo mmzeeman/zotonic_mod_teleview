@@ -4,13 +4,14 @@
  *
  */
 
-
 const model = {
     id: undefined,
     teleview_id: undefined,
     renderer_id: undefined,
 
     updateTopic: undefined,
+
+    sts: undefined, 
 
     keyframe: undefined,
     keyframe_sn: undefined,
@@ -34,11 +35,9 @@ const model = {
     hidden_start_time: undefined
 };
 
-
 const view = {};
 const state = {};
 const actions = {};
-
 
 /**
  * Model
@@ -49,11 +48,11 @@ model.present = function(proposal) {
     /*
      * Start
      */
-
     if(proposal.is_start) {
         const arg = proposal.arg;
 
         model.id = arg.id;
+        model.sts = arg.renderer_sts;
         model.teleview_id = arg.teleview_id;
         model.renderer_id = arg.renderer_id;
 
@@ -75,6 +74,7 @@ model.present = function(proposal) {
         model.pickle = arg.pickle;
 
         self.publish( cotonic.mqtt.fill("model/ui/insert/+id", model), { inner: true, priority: 10 });
+
         self.subscribe(televiewEventTopic(model), actions.televiewEvent);
         self.subscribe(rendererEventTopic(model), actions.rendererEvent);
         self.subscribe("model/lifecycle/event/state", actions.lifecycleEvent);
@@ -84,97 +84,10 @@ model.present = function(proposal) {
     }
 
     /*
-     * Update
-     */
-
-    if(proposal.is_update) {
-        switch(proposal.type) {
-            case "keyframe":
-                model.isCurrentFrameRequested = false;
-
-                if(model.keyframe_sn === undefined || proposal.update.keyframe_sn > model.keyframe_sn) {
-                    model.keyframe = toUTF8(proposal.update.frame);
-                    model.keyframe_sn = proposal.update.keyframe_sn;
-                    
-                    // Only push a new current frame when we have on. If there is no current frame yet,
-                    // the content on the screen during rendering could be newer than the current keyframe.
-                    if(model.current_frame) {
-                        model.current_frame = model.keyframe;
-                        model.current_frame_sn = model.keyframe_sn;
-                    }
-
-                    if(model.queuedCumulativePatch) {
-                        model.current_frame = applyPatch(model.current_frame, model.queuedCumulativePatch);
-                        model.current_frame_sn = model.queuedCumulativePatch.current_frame_sn;
-                    }
-
-                    model.incrementalPatchQueue = [];
-                    model.queuedCumulativePatch = undefined;
-                } else {
-                    console.info("Teleview: Ignore keyframe, keyframe in update is older than current keyframe.",
-                        {id: model.id,
-                         keyframe_sn: model.keyframe_sn,
-                         update_keyframe_sn: proposal.update.keyframe_sn});
-                }
-
-                break;
-            case "current_frame":
-                model.isCurrentFrameRequested = false;
-
-                if(model.current_frame_sn === undefined || proposal.update.current_frame_sn > model.current_frame_sn) {
-                    model.current_frame = toUTF8(proposal.update.current_frame);
-                    model.current_frame_sn = proposal.update.current_frame_sn;
-
-                    while(model.incrementalPatchQueue.length) {
-                        const p = model.incrementalPatchQueue.shift();
-
-                        if(model.current_frame_sn + 1 !== p.current_frame_sn) {
-                            continue; // skip
-                        }
-
-                        model.current_frame = applyPatch(model.current_frame, p);
-                        model.current_frame_sn = p.current_frame_sn;
-                    }
-                }
-
-                break;
-            case "cumulative": // Patch against the keyframe
-                if(model.keyframe && model.keyframe_sn === proposal.update.keyframe_sn) {
-                    model.current_frame = applyPatch(model.keyframe, proposal.update);
-
-                    // Update the current frame sn when it is available. 
-                    if(proposal.update.current_frame_sn !== undefined) {
-                        model.current_frame_sn = proposal.update.current_frame_sn;
-                    }
-                } else {
-                    // When a keyframe arrives, it could be that it is possible to use this patch 
-                    // The keyframe is sent as retained message, it will arrive almost immediately
-                    model.queuedCumulativePatch = proposal.update;
-                }
-
-                break;
-            case "incremental": // Patch against the current frame.
-                if(model.current_frame && model.current_frame_sn + 1 === proposal.update.current_frame_sn) {
-                    model.current_frame = applyPatch(model.current_frame, proposal.update);
-                    model.current_frame_sn = proposal.update.current_frame_sn;
-                } else {
-                    model.incrementalPatchQueue.push(proposal.update);
-                    setTimeout(() => {
-                        actions.requestCurrentFrame(false)
-                    });
-                }
-
-                break;
-            default:
-                throw Error("Unexpected update", proposal.type);
-        }
-    }
-
-    /*
      * Reset
      */
-
-    if(proposal.is_reset) {
+    if(proposal.is_reset || (proposal.is_update && proposal.update.sts > model.sts)) {
+        model.sts = undefined;
         model.keyframe  = undefined;
         model.keyframe_sn = 0;
 
@@ -187,6 +100,106 @@ model.present = function(proposal) {
     }
 
     /*
+     * Update
+     */
+    if(proposal.is_update) {
+        if(model.sts === undefined || proposal.update.sts === model.sts) {
+            switch(proposal.type) {
+                case "keyframe":
+                    if(model.keyframe_sn === undefined || proposal.update.keyframe_sn > model.keyframe_sn) {
+                        if(model.sts === undefined) {
+                            model.sts = proposal.update.sts;
+                        }
+                        model.keyframe = toUTF8(proposal.update.frame);
+                        model.keyframe_sn = proposal.update.keyframe_sn;
+                    
+                        // Only push a new current frame when we have on. If there is no current frame yet,
+                        // the content on the screen during rendering could be newer than the current keyframe.
+                        if(model.current_frame) {
+                            model.current_frame = model.keyframe;
+                            model.current_frame_sn = model.keyframe_sn;
+                        }
+
+                        if(model.queuedCumulativePatch) {
+                            model.current_frame = applyPatch(model.current_frame, model.queuedCumulativePatch);
+                            model.current_frame_sn = model.queuedCumulativePatch.current_frame_sn;
+                        }
+
+                        model.incrementalPatchQueue = [];
+                        model.queuedCumulativePatch = undefined;
+
+                    } else {
+                        console.info("Teleview: Ignore keyframe, it is older or has same serial number as current keyframe.",
+                            {id: model.id,
+                                keyframe_sn: model.keyframe_sn,
+                                update_keyframe_sn: proposal.update.keyframe_sn});
+                    }
+
+                    break;
+                case "current_frame":
+                    if(model.current_frame_sn === undefined || proposal.update.current_frame_sn > model.current_frame_sn) {
+                        if(model.sts === undefined) {
+                            model.sts = proposal.update.sts;
+                        }
+                        model.current_frame = toUTF8(proposal.update.current_frame);
+                        model.current_frame_sn = proposal.update.current_frame_sn;
+
+                        while(model.incrementalPatchQueue.length) {
+                            const p = model.incrementalPatchQueue.shift();
+
+                            if(model.current_frame_sn + 1 !== p.current_frame_sn) {
+                                continue; // skip
+                            }
+
+                            model.current_frame = applyPatch(model.current_frame, p);
+                            model.current_frame_sn = p.current_frame_sn;
+                        }
+                    } else {
+                        if(proposal.update.current_frame < model.current_frame) {
+                            console.info("Teleview: Ignore current_frame, it is older or has same serial number as current frame.",
+                                {id: model.id,
+                                    keyframe_sn: model.keyframe_sn,
+                                    current_frame_sn: model.current_frame_sn,
+                                    update_current_frame_sn: proposal.update.current_frame_sn});
+                        }
+                    }
+
+                    break;
+                case "cumulative": // Patch against the keyframe
+                    if(model.keyframe && model.keyframe_sn === proposal.update.keyframe_sn) {
+                        model.current_frame = applyPatch(model.keyframe, proposal.update);
+
+                        // Update the current frame sn when it is available. 
+                        if(proposal.update.current_frame_sn !== undefined) {
+                            model.current_frame_sn = proposal.update.current_frame_sn;
+                        }
+                    } else {
+                        // When a keyframe arrives, it could be that it is possible to use this patch 
+                        // The keyframe is sent as retained message, it will arrive almost immediately
+                        model.queuedCumulativePatch = proposal.update;
+                    }
+
+                    break;
+                case "incremental": // Patch against the current frame.
+                    if(model.current_frame && model.current_frame_sn + 1 === proposal.update.current_frame_sn) {
+                        model.current_frame = applyPatch(model.current_frame, proposal.update);
+                        model.current_frame_sn = proposal.update.current_frame_sn;
+                    } else {
+                        model.incrementalPatchQueue.push(proposal.update);
+                        setTimeout(actions.requestCurrentFrame, 0, false);
+                    }
+
+                    break;
+                default:
+                    throw Error("Unexpected update", proposal.type);
+            }
+        } else {
+            // This update is older than we have right now...
+            console.info("Teleview: Ignore update, it is from an older renderer.", {id: model.id, sts: model.sts, update_sts: proposal.update.sts});
+        }
+    }
+
+    /*
      * Request Current Frame
      */
     if(proposal.is_request_current_frame) {
@@ -196,7 +209,6 @@ model.present = function(proposal) {
     /*
      * Still watching? 
      */
-
     if(proposal.is_still_watching && model.updateTopic && state.isPageVisible(model)) {
         self.publish(
             cotonic.mqtt.fill("bridge/origin/model/teleview/post/+teleview_id/still_watching/+renderer_id", model),
@@ -223,9 +235,7 @@ model.present = function(proposal) {
             const now = Date.now();
 
             if(model.hidden_start_time !== undefined && ((now - model.hidden_start_time) > 5000)) {
-                setTimeout(() => {
-                    actions.requestCurrentFrame(false)
-                });
+                setTimeout(actions.requestCurrentFrame, 0, false);
             }
 
             model.hidden_start_time = undefined;
@@ -240,13 +250,10 @@ model.present = function(proposal) {
     }
 
     /*
-     * There was a current frame request error, and we need a new frame.
+     * There was a current frame request error, but we need a new frame.
      */
     if(proposal.is_current_frame_request_error) {
-        model.isCurrentFrameRequested = false;
-        setTimeout(() => {
-            actions.requestCurrentFrame(false)
-        });
+        setTimeout(actions.requestCurrentFrame, 0, false);
     }
 
     if(proposal.is_renderer_down) {
@@ -258,17 +265,15 @@ model.present = function(proposal) {
 }
 
 model.requestCurrentFrame = function() {
-    if(model.isCurrentFrameRequested) {
+    if(model.isCurrentFrameRequested)
         return;
-    }
 
     model.isCurrentFrameRequested = true;
-
     self.call(cotonic.mqtt.fill("bridge/origin/model/teleview/get/+teleview_id/current_frame/+renderer_id", model),
               model.pickle,
               {qos: 1})
-        .then(actions.currentFrameResponse)
-        .catch(actions.currentFrameRequestError);
+        .then(actions.currentFrameResponse, actions.currentFrameRequestError)
+        .finally(() => { model.isCurrentFrameRequested = false; });
 }
 
 
@@ -351,9 +356,6 @@ actions.rendererEvent = function(m, a) {
         case "still_watching":
             actions.still_watching();
             break;
-        case "start":
-            actions.rendererStart();
-            break;
         case "down":
             actions.rendererDown(m.payload.reason);
             break;
@@ -429,17 +431,6 @@ actions.lifecycleEvent = function(m, a) {
     });
 }
 
-actions.keyframeResponse = function(m) {
-    const p = m.payload;
-    if(p.status === "ok") {
-        model.present({
-            type: "keyframe",
-            is_update: true,
-            update: p.result
-        });
-    }
-}
-
 actions.currentFrameResponse = function(m) {
     const p = m.payload;
     if(p.status === "ok") {
@@ -451,7 +442,7 @@ actions.currentFrameResponse = function(m) {
             });
         } else if(p.result.state === "restarting") {
             // The teleview is going to be restarted.
-            actions.reset();
+            console.info("Teleview: Restarting", {id: model.id});
         } else {
             console.warn("Teleview: Unknown current frame response", {id: model.id});
         }
@@ -460,10 +451,6 @@ actions.currentFrameResponse = function(m) {
 
 actions.currentFrameRequestError = function(m) {
     model.present({is_current_frame_request_error: true});
-}
-
-actions.rendererStart = function() {
-    // [TODO] The renderer is started. The process will publish a reset message.
 }
 
 actions.rendererDown = function(reason) {
@@ -511,6 +498,7 @@ function applyPatch(source, update) {
     let src_idx = 0;
     let dst_idx = 0;
 
+    // [TODO] use Array.set.
     for(let i = 0, l = update.patch.length; i < l; i += 2) {
         const patch = update.patch[i];
         const v = update.patch[i+1];
