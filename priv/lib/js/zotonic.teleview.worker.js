@@ -18,10 +18,11 @@ const model = {
 
     current_frame: undefined,
     current_frame_sn: undefined,
-    isCurrentFrameRequested: false,
 
     queuedCumulativePatch: undefined,
     incrementalPatchQueue: [],
+
+    isCurrentFrameRequested: false,
 
     max_time: undefined,
     min_time: undefined,
@@ -29,9 +30,7 @@ const model = {
     pickle: undefined,
 
     stop: false,
-
     page_state: "active",
-
     hidden_start_time: undefined
 };
 
@@ -43,7 +42,7 @@ const actions = {};
  * Model
  */
 
-model.present = function(proposal) {
+model.present = (proposal) => {
 
     /*
      * Start
@@ -73,9 +72,8 @@ model.present = function(proposal) {
 
         model.pickle = arg.pickle;
 
-        self.publish( cotonic.mqtt.fill("model/ui/insert/+id", model), { inner: true, priority: 10 });
+        self.publish(cotonic.mqtt.fill("model/ui/insert/+id", model), { inner: true, priority: 10 });
 
-        self.subscribe(televiewEventTopic(model), actions.televiewEvent);
         self.subscribe(rendererEventTopic(model), actions.rendererEvent);
         self.subscribe("model/lifecycle/event/state", actions.lifecycleEvent);
 
@@ -264,7 +262,7 @@ model.present = function(proposal) {
     state.render(model);
 }
 
-model.requestCurrentFrame = function() {
+model.requestCurrentFrame = () => {
     if(model.isCurrentFrameRequested)
         return;
 
@@ -281,7 +279,7 @@ model.requestCurrentFrame = function() {
  * View
  */
 
-view.display = function(representation) {
+view.display = (representation) => {
     if(!representation)
         return;
 
@@ -294,24 +292,24 @@ view.display = function(representation) {
 
 state.view = view;
 
-state.render = function(model) {
+state.render = (model) => {
     state.view.display(state.representation(model));
     state.nextAction(model) ;
 }
 
-state.isStarted = function(model) {
+state.isStarted = (model) => {
     return !!model.updateTopic;
 }
 
-state.hasCurrentFrame = function(model) {
+state.hasCurrentFrame = (model) => {
     return !!model.current_frame;
 }
 
-state.isPageVisible = function(model) {
+state.isPageVisible = (model) => {
     return (model.page_state === "active" || model.page_state === "passive");
 }
 
-state.representation = function(model) {
+state.representation = (model) => {
     if(!state.isStarted(model)) return;
     if(!state.hasCurrentFrame(model)) return;
     if(!state.isPageVisible(model)) return;
@@ -319,7 +317,7 @@ state.representation = function(model) {
     return fromUTF8(model.current_frame);
 }
 
-state.nextAction = function(model) {
+state.nextAction = (model) => {
     if(model.stop && model.updateTopic) {
         actions.stop();
     }
@@ -329,7 +327,7 @@ state.nextAction = function(model) {
  * Actions
  */
 
-actions.televiewEvent = function(m, a) {
+actions.televiewEvent = (m, a) => {
     switch(a.evt_type) {
         case "stopped":
             // The server side was stopped.
@@ -345,29 +343,25 @@ actions.televiewEvent = function(m, a) {
     }
 }
 
-actions.rendererEvent = function(m, a) {
-    switch(a.evt_type) {
-        case "update":
-            actions.update(a.args[0], m.payload);
-            break;
-        case "reset":
-            actions.reset();
-            break;
-        case "still_watching":
-            actions.still_watching();
-            break;
-        case "down":
-            actions.rendererDown(m.payload.reason);
-            break;
-        case "stopped":
-            actions.rendererStopped(m.payload.reason);
-            break;
-        default:
-            console.warn("Teleview: Unknown renderer event", {id: model.id, event_type: a.evt_type});
+actions.rendererEvent = (m, a) => {
+    const t = a.evt_type;
+
+    if(t === "update") {
+        actions.update(a.args[0], m.payload);
+    } else if(t === "reset") {
+        actions.reset();
+    } else if(t === "still_watching") {
+        actions.still_watching();
+    } else if(t === "down") {
+        actions.rendererDown(m.payload.reason);
+    } else if(t === "stopped") {
+        actions.rendererStopped(m.payload.reason);
+    } else {
+        console.warn("Teleview: Unknown renderer event", {id: model.id, event_type: t});
     }
 }
 
-actions.update = function (type, update) {
+actions.update = (type, update) => {
     model.present({
         is_update: true,
         type: type,
@@ -375,27 +369,26 @@ actions.update = function (type, update) {
     });
 }
 
-actions.reset = function() {
+actions.reset = () => {
     model.present({is_reset: true});
 }
 
-
-actions.requestCurrentFrame = function(withReset) {
+actions.requestCurrentFrame = (withReset) => {
     model.present({
         is_request_current_frame: true,
         is_reset: withReset 
     });
 }
 
-actions.stop = function(reason) {
+actions.stop = (reason) => {
     model.present({is_stop: true, reason: reason})
 }
 
-actions.still_watching = function() {
+actions.still_watching = () => {
     model.present({is_still_watching: true});
 }
 
-actions.start = function(args) {
+actions.start = (args) => {
     model.present( {is_start: true, arg: args[0] } );
 }
 
@@ -403,7 +396,7 @@ actions.ensureServerSide = function() {
     model.present({is_ensure_server_side: true});
 }
 
-actions.handleEnsureStatus = function(m, a) {
+actions.handleEnsureStatus = (m, a) => {
     if(m.payload && m.payload.status === "ok") {
         model.present({
             is_ensure_server_status: true,
@@ -417,21 +410,21 @@ actions.handleEnsureStatus = function(m, a) {
     }
    }
 
-actions.errorEnsureStatus = function(m, a) {
+actions.errorEnsureStatus = (m, a) => {
     model.present({
         is_ensure_server_status_error: true,
         arg: m.payload
     });
 }
 
-actions.lifecycleEvent = function(m, a) {
+actions.lifecycleEvent = (m, a) => {
     model.present({
         is_lifecycle_event: true,
         state: m.payload
     });
 }
 
-actions.currentFrameResponse = function(m) {
+actions.currentFrameResponse = (m) => {
     const p = m.payload;
     if(p.status === "ok") {
         if(p.result.state === "ok") {
@@ -449,11 +442,11 @@ actions.currentFrameResponse = function(m) {
     }
 }
 
-actions.currentFrameRequestError = function(m) {
+actions.currentFrameRequestError = (m) => {
     model.present({is_current_frame_request_error: true});
 }
 
-actions.rendererDown = function(reason) {
+actions.rendererDown = (reason) => {
     // The renderer is down, due to an error, or shutdown. It will be restarted
     // in case of an error.
     model.present({is_renderer_down: true, reason: reason});
@@ -470,12 +463,8 @@ actions.rendererStopped = function() {
 const toUTF8 = (() => { const e = new TextEncoder(); return e.encode.bind(e); })();
 const fromUTF8 = (() => { const d = new TextDecoder(); return d.decode.bind(d); })();
 
-function televiewEventTopic(model) {
-    return `bridge/origin/model/teleview/event/${ model.teleview_id }/+evt_type`;
-}
-
 function rendererEventTopic(model) {
-    return `${ televiewEventTopic(model) }/${ model.renderer_id }/#args`;
+    return `bridge/origin/model/teleview/event/${ model.teleview_id }/+evt_type/${ model.renderer_id }/#args`;
 }
 
 function applyPatch(source, update) {

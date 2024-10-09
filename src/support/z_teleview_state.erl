@@ -179,7 +179,6 @@ init([Id, Supervisor, #{ topics := Topics }=Args, Context]) ->
     ok = subscribe(Topics, Context),
     ok = setup_tick(Args),
 
-    m_teleview:publish_event(<<"started">>, Id, #{ }, Context),
     trigger_check(),
         
     {ok, #state{id=Id, teleview_supervisor=Supervisor, args=Args, context=Context}}.
@@ -254,8 +253,7 @@ handle_info({mqtt_msg, Msg}, State) ->
 handle_info(_Info, State) ->
     {noreply, State}.
 
-terminate(Reason, State) ->
-    m_teleview:publish_event(<<"stopped">>, State#state.id, #{ reason => Reason }, State#state.context),
+terminate(_Reason, _State) ->
     ok.
 
 code_change(_OldVsn, State, _Extra) ->

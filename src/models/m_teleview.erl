@@ -30,7 +30,6 @@
 ]).
 
 -export([
-    publish_event/4,
     publish_event/5,
     publish_event/6
 ]).
@@ -41,9 +40,6 @@
 %% model/teleview/get/<teleview-id>/state/<renderer-id> : Get the state of the renderer, ensures that it is running.
 %%
 %% model/teleview/post/<teleview-id>/still-watching/<renderer-id>      : Indicate that the viewer is still watching.
-%%
-%% model/teleview/event/<teleview-id>/stopped                          : The whole teleview is stopped. (e.g. when all renderers are gone) 
-%% model/teleview/event/<teleview-id>/started                          : The teleview is started. 
 %%
 %% model/teleview/event/<teleview-id>/reset/<renderer-id>              : The viewer must be reset. Wait for new keyframe.
 %% model/teleview/event/<teleview-id>/still-watching/<renderer-id>     : Reply to keep renderer alive
@@ -125,10 +121,6 @@ m_post(V, _Msg, _Context) ->
 %%
 %% Model Events
 %%
-
--spec publish_event(binary(), integer(), term(), z:context()) -> ok | {error, term()}.
-publish_event(Event, TeleviewId, Msg, Context) ->
-    z_mqtt:publish([<<"model">>, <<"teleview">>, <<"event">>, TeleviewId, Event], Msg, #{ qos => 1 }, z_acl:sudo(Context)).
 
 -spec publish_event(binary(), integer(), integer(), term(), z:context()) -> ok | {error, term()}.
 publish_event(Event, TeleviewId, RendererId, Msg, Context) ->
