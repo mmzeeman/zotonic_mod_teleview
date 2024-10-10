@@ -50,6 +50,8 @@ model.present = (proposal) => {
     if(proposal.is_start) {
         const arg = proposal.arg;
 
+        console.log("start", arg);
+
         model.id = arg.id;
         model.sts = arg.renderer_sts;
         model.teleview_id = arg.teleview_id;
@@ -61,7 +63,7 @@ model.present = (proposal) => {
         model.keyframe_sn = undefined;
 
         model.current_frame = undefined;
-        model.current_frame_sn = undefined;
+        model.current_frame_sn = arg.current_frame_sn;
         model.isCurrentFrameRequested = false;
 
         model.queuedCumulativePatch = undefined; 
@@ -84,7 +86,8 @@ model.present = (proposal) => {
     /*
      * Reset
      */
-    if(proposal.is_reset || (proposal.is_update && proposal.update.sts > model.sts)) {
+    if(proposal.is_reset) {
+        console.log("reset");
         model.sts = undefined;
         model.keyframe  = undefined;
         model.keyframe_sn = 0;
@@ -95,106 +98,24 @@ model.present = (proposal) => {
 
         model.queuedCumulativePatch = undefined; 
         model.incrementalPatchQueue = [];
+
+        const topic = rendererEventTopic(model);
+
+        console.info("resubscribe");
+        self.unsubscribe(topic);
+        self.subscribe(topic, actions.rendererEvent);
     }
 
     /*
      * Update
      */
     if(proposal.is_update) {
-        if(model.sts === undefined || proposal.update.sts === model.sts) {
-            switch(proposal.type) {
-                case "keyframe":
-                    if(model.keyframe_sn === undefined || proposal.update.keyframe_sn > model.keyframe_sn) {
-                        if(model.sts === undefined) {
-                            model.sts = proposal.update.sts;
-                        }
-                        model.keyframe = toUTF8(proposal.update.frame);
-                        model.keyframe_sn = proposal.update.keyframe_sn;
-                    
-                        // Only push a new current frame when we have on. If there is no current frame yet,
-                        // the content on the screen during rendering could be newer than the current keyframe.
-                        if(model.current_frame) {
-                            model.current_frame = model.keyframe;
-                            model.current_frame_sn = model.keyframe_sn;
-                        }
+        model.handleUpdate(proposal.type, proposal.update);
+    }
 
-                        if(model.queuedCumulativePatch) {
-                            model.current_frame = applyPatch(model.current_frame, model.queuedCumulativePatch);
-                            model.current_frame_sn = model.queuedCumulativePatch.current_frame_sn;
-                        }
-
-                        model.incrementalPatchQueue = [];
-                        model.queuedCumulativePatch = undefined;
-
-                    } else {
-                        console.info("Teleview: Ignore keyframe, it is older or has same serial number as current keyframe.",
-                            {id: model.id,
-                                keyframe_sn: model.keyframe_sn,
-                                update_keyframe_sn: proposal.update.keyframe_sn});
-                    }
-
-                    break;
-                case "current_frame":
-                    if(model.current_frame_sn === undefined || proposal.update.current_frame_sn > model.current_frame_sn) {
-                        if(model.sts === undefined) {
-                            model.sts = proposal.update.sts;
-                        }
-                        model.current_frame = toUTF8(proposal.update.current_frame);
-                        model.current_frame_sn = proposal.update.current_frame_sn;
-
-                        while(model.incrementalPatchQueue.length) {
-                            const p = model.incrementalPatchQueue.shift();
-
-                            if(model.current_frame_sn + 1 !== p.current_frame_sn) {
-                                continue; // skip
-                            }
-
-                            model.current_frame = applyPatch(model.current_frame, p);
-                            model.current_frame_sn = p.current_frame_sn;
-                        }
-                    } else {
-                        if(proposal.update.current_frame < model.current_frame) {
-                            console.info("Teleview: Ignore current_frame, it is older or has same serial number as current frame.",
-                                {id: model.id,
-                                    keyframe_sn: model.keyframe_sn,
-                                    current_frame_sn: model.current_frame_sn,
-                                    update_current_frame_sn: proposal.update.current_frame_sn});
-                        }
-                    }
-
-                    break;
-                case "cumulative": // Patch against the keyframe
-                    if(model.keyframe && model.keyframe_sn === proposal.update.keyframe_sn) {
-                        model.current_frame = applyPatch(model.keyframe, proposal.update);
-
-                        // Update the current frame sn when it is available. 
-                        if(proposal.update.current_frame_sn !== undefined) {
-                            model.current_frame_sn = proposal.update.current_frame_sn;
-                        }
-                    } else {
-                        // When a keyframe arrives, it could be that it is possible to use this patch 
-                        // The keyframe is sent as retained message, it will arrive almost immediately
-                        model.queuedCumulativePatch = proposal.update;
-                    }
-
-                    break;
-                case "incremental": // Patch against the current frame.
-                    if(model.current_frame && model.current_frame_sn + 1 === proposal.update.current_frame_sn) {
-                        model.current_frame = applyPatch(model.current_frame, proposal.update);
-                        model.current_frame_sn = proposal.update.current_frame_sn;
-                    } else {
-                        model.incrementalPatchQueue.push(proposal.update);
-                        setTimeout(actions.requestCurrentFrame, 0, false);
-                    }
-
-                    break;
-                default:
-                    throw Error("Unexpected update", proposal.type);
-            }
-        } else {
-            // This update is older than we have right now...
-            console.info("Teleview: Ignore update, it is from an older renderer.", {id: model.id, sts: model.sts, update_sts: proposal.update.sts});
-        }
+    if(proposal.is_current_frame_response) {
+        console.log("current-frame-response", proposal.update);
+        model.handleCurrentFrameUpdate(proposal.update);
     }
 
     /*
@@ -233,7 +154,8 @@ model.present = (proposal) => {
             const now = Date.now();
 
             if(model.hidden_start_time !== undefined && ((now - model.hidden_start_time) > 5000)) {
-                setTimeout(actions.requestCurrentFrame, 0, false);
+                console.info("check view up to date");
+                setTimeout(actions.requestCurrentFrame, 0);
             }
 
             model.hidden_start_time = undefined;
@@ -251,7 +173,8 @@ model.present = (proposal) => {
      * There was a current frame request error, but we need a new frame.
      */
     if(proposal.is_current_frame_request_error) {
-        setTimeout(actions.requestCurrentFrame, 0, false);
+        console.log("current-frame-request-error");
+        setTimeout(actions.requestCurrentFrame, 0);
     }
 
     if(proposal.is_renderer_down) {
@@ -272,6 +195,115 @@ model.requestCurrentFrame = () => {
               {qos: 1})
         .then(actions.currentFrameResponse, actions.currentFrameRequestError)
         .finally(() => { model.isCurrentFrameRequested = false; });
+}
+
+model.handleCurrentFrameUpdate = (update) => {
+    if(model.sts === undefined
+        || model.sts < update.sts
+        || (model.sts === update.sts && update.current_frame_sn > model.current_frame_sn)) {
+
+        if(model.sts !== update.sts) {
+            model.sts = update.sts;
+        }
+
+        model.current_frame = toUTF8(update.current_frame);
+        model.current_frame_sn = update.current_frame_sn;
+
+        model.handleQueuedIncremental();
+    } else {
+        console.info("Teleview: Ignore current_frame, it is older or has same serial number as current frame.",
+            {id: model.id,
+                stn: model.sts,
+                update_stn: update.sts,
+                keyframe_sn: model.keyframe_sn,
+                current_frame_sn: model.current_frame_sn,
+                update_current_frame_sn: update.current_frame_sn});
+    }
+}
+
+model.handleQueuedIncremental = () => {
+    while(model.incrementalPatchQueue.length) {
+        const p = model.incrementalPatchQueue.shift();
+
+        if(model.stn !== p.stn) {
+            continue; // skip
+        }
+
+        if(model.current_frame_sn + 1 === p.current_frame_sn) {
+            console.log("apply queued");
+            model.current_frame = applyPatch(model.current_frame, p);
+            model.current_frame_sn = p.current_frame_sn;
+        } else {
+            console.log("skip");
+        }
+
+    }
+}
+
+model.handleUpdate = (type, update) => {
+    if(type === "cumulative") {
+        if(model.sts === update.sts ) {
+            if(model.keyframe && model.keyframe_sn === update.keyframe_sn) {
+                model.current_frame = applyPatch(model.keyframe, update);
+                model.current_frame_sn = update.current_frame_sn;
+            } else {
+                console.warn("Cumulative patch does not fit... queue it", model.current_frame_sn, update.current_frame_sn);
+                // When a keyframe arrives, it could be that it is possible to use this patch 
+                // The keyframe is sent as retained message, it will arrive almost immediately
+                model.queuedCumulativePatch = update;
+            }
+        } else {
+            console.warn("Teleview: unexpected cumulative patch", {id: model.id});
+        }
+    } else if(type === "incremental") {
+        if(model.sts === update.sts) {
+            if(model.current_frame && (model.current_frame_sn + 1 === update.current_frame_sn)) {
+                model.current_frame = applyPatch(model.current_frame, update);
+                model.current_frame_sn = update.current_frame_sn;
+            } else {
+                console.warn("Patch does not fit", model.current_frame_sn, update.current_frame_sn);
+                model.incrementalPatchQueue.push(update);
+                setTimeout(actions.requestCurrentFrame, 0);
+            }
+        } else {
+            console.warn("Teleview: unexpected incremental patch", {id: model.id});
+        }
+    } else if(type === "keyframe") {
+        if(model.sts === undefined || model.keyframe_sn === undefined || update.keyframe_sn > model.keyframe_sn) {
+            // Update the sts...
+            if(model.sts === undefined || model.sts < update.sts) {
+                model.sts = update.sts;
+            }
+
+            // Update keyframe.
+            model.keyframe = toUTF8(update.frame);
+            model.keyframe_sn = update.keyframe_sn;
+
+            // Check if the new keyframe is the new current frame.
+            if(model.current_frame || (model.current_frame_sn < update.keyframe_sn)) {
+                model.current_frame = model.keyframe;
+                model.current_frame_sn = model.keyframe_sn;
+            }
+
+            // Apply the last arrived queued cumulative patch.
+            if(model.queuedCumulativePatch) {
+                if(model.current_frame_sn === undefined || (model.current_frame_sn < model.queuedCumulativePatch.current_frame_sn)) {
+                    if(model.queuedCumulativePatch.stn === model.stn) {
+                        model.current_frame = applyPatch(model.current_frame, model.queuedCumulativePatch);
+                        model.current_frame_sn = model.queuedCumulativePatch.current_frame_sn;
+                    } 
+                } 
+                model.queuedCumulativePatch = undefined;
+            }
+        } else {
+            console.info("Teleview: Ignore keyframe, it is older or has same serial number as current keyframe.",
+                {id: model.id,
+                    keyframe_sn: model.keyframe_sn,
+                    update_keyframe_sn: update.keyframe_sn});
+        }
+    } else {
+        console.warn("Teleview: unexpected update type.", {id: model.id, type: type});
+    }
 }
 
 
@@ -327,22 +359,6 @@ state.nextAction = (model) => {
  * Actions
  */
 
-actions.televiewEvent = (m, a) => {
-    switch(a.evt_type) {
-        case "stopped":
-            // The server side was stopped.
-            actions.stop(m.payload.reason);
-            break;
-        case "started":
-            // The server-side teleview just (re)stated, request
-            // the current frame
-            actions.requestCurrentFrame(true);
-            break;
-        default:
-            console.warn("Teleview: Unknown teleview event", {id: model.id, event_type: a.evt_type});
-    }
-}
-
 actions.rendererEvent = (m, a) => {
     const t = a.evt_type;
 
@@ -362,6 +378,7 @@ actions.rendererEvent = (m, a) => {
 }
 
 actions.update = (type, update) => {
+    console.log(type);
     model.present({
         is_update: true,
         type: type,
@@ -373,11 +390,8 @@ actions.reset = () => {
     model.present({is_reset: true});
 }
 
-actions.requestCurrentFrame = (withReset) => {
-    model.present({
-        is_request_current_frame: true,
-        is_reset: withReset 
-    });
+actions.requestCurrentFrame = () => {
+    model.present({ is_request_current_frame: true });
 }
 
 actions.stop = (reason) => {
@@ -392,11 +406,7 @@ actions.start = (args) => {
     model.present( {is_start: true, arg: args[0] } );
 }
 
-actions.ensureServerSide = function() {
-    model.present({is_ensure_server_side: true});
-}
-
-actions.handleEnsureStatus = (m, a) => {
+actions.handleEnsureStatus = (m, _a) => {
     if(m.payload && m.payload.status === "ok") {
         model.present({
             is_ensure_server_status: true,
@@ -410,14 +420,14 @@ actions.handleEnsureStatus = (m, a) => {
     }
    }
 
-actions.errorEnsureStatus = (m, a) => {
+actions.errorEnsureStatus = (m, _a) => {
     model.present({
         is_ensure_server_status_error: true,
         arg: m.payload
     });
 }
 
-actions.lifecycleEvent = (m, a) => {
+actions.lifecycleEvent = (m, _a) => {
     model.present({
         is_lifecycle_event: true,
         state: m.payload
@@ -429,20 +439,20 @@ actions.currentFrameResponse = (m) => {
     if(p.status === "ok") {
         if(p.result.state === "ok") {
             model.present({
-                type: "current_frame",
-                is_update: true,
+                is_current_frame_response: true,
                 update: p.result
             });
         } else if(p.result.state === "restarting") {
             // The teleview is going to be restarted.
             console.info("Teleview: Restarting", {id: model.id});
+            actions.reset();
         } else {
             console.warn("Teleview: Unknown current frame response", {id: model.id});
         }
     }
 }
 
-actions.currentFrameRequestError = (m) => {
+actions.currentFrameRequestError = (_m) => {
     model.present({is_current_frame_request_error: true});
 }
 
@@ -492,22 +502,18 @@ function applyPatch(source, update) {
         const patch = update.patch[i];
         const v = update.patch[i+1];
 
-        switch(patch) {
-            case "c": // copy src into destination buffer.
-                copyInto(array, dst_idx, src, src_idx, v);
-                src_idx += v;
-                dst_idx += v;
-                break;
-            case "s": // skip src
-                src_idx += v;
-                break;
-            case "i": // insert new string into destination buffer.
-                const data = toUTF8(v)
-                copyInto(array, dst_idx, data);
-                dst_idx += data.length;
-                break;
-            default:
-                throw Error("Unexpected patch");
+        if(patch === "c") {
+            copyInto(array, dst_idx, src, src_idx, v);
+            src_idx += v;
+            dst_idx += v;
+        } else if(patch === "s") {
+            src_idx += v;
+        } else if(patch === "i") {
+            const data = toUTF8(v)
+            copyInto(array, dst_idx, data);
+            dst_idx += data.length;
+        } else {
+            throw Error("Unexpected patch");
         }
     }
 

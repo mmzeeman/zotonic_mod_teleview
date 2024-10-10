@@ -136,7 +136,8 @@ get_current_frame(TeleviewId, RendererId, TeleviewArgs, RendererArgs, Context) -
         {error, enoent} ->
             case scomp_teleview_teleview:ensure_renderer(TeleviewArgs, RendererArgs, Context) of
                 {ok, TeleviewId, RendererId} ->
-                    #{ state => restarting };
+                    get_current_frame(TeleviewId, RendererId, Context);
+                    % #{ state => restarting };
                 {error, Error} ->
                     ?LOG_WARNING(#{ text => "Could not restart renderer",
                                     error => Error }),

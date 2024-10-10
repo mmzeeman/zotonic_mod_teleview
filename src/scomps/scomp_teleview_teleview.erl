@@ -92,9 +92,9 @@ render_teleview(#{ teleview_id := TeleviewId,
                                _ ->
                                    TeleviewElementArgs
                            end,
-    {Sts, CurrentFrame} = current_frame(TeleviewId, RendererId, Pickle, Context1),
+    {Sts, CurrentFrame, SN} = current_frame(TeleviewId, RendererId, Pickle, Context1),
     TeleviewElement = z_tags:render_tag(TeleviewWrapperElement, TeleviewElementArgs1, [ CurrentFrame ]),
-    Script = render_script(Id, Params, RenderState#{ renderer_sts => Sts }, Context1),
+    Script = render_script(Id, Params, RenderState#{ renderer_sts => Sts, current_frame_sn => SN }, Context1),
 
     {ok, [TeleviewElement, {javascript, Script}]}.
 
@@ -152,9 +152,9 @@ teleview_wrapper_element(#{ }) ->
 % @doc Get the teleview element wrapper element 
 current_frame(TeleviewId, RendererId, Pickle, Context) ->
     case z_teleview_state:get_current_frame(TeleviewId, RendererId, Pickle, Context) of
-        #{ sts := Sts, current_frame := Frame } ->
-            {Sts, Frame};
+        #{ sts := Sts, current_frame := Frame, current_frame_sn := SN } ->
+            {Sts, Frame, SN};
         _ ->
-            {erlang:monotonic_time(millisecond), <<>>}
+            {erlang:monotonic_time(millisecond), <<>>, 0}
     end.
 

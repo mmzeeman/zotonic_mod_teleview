@@ -122,7 +122,7 @@ init([TeleviewId, RendererId, #{ template := Template }=Args, Context]) ->
     trigger_check(),
 
     InitialState = #state{
-                      sts=erlang:monotonic_time(millisecond),
+                      sts=erlang:system_time(millisecond),
                       teleview_id=TeleviewId,
                       renderer_id=RendererId,
                       template=Template,
