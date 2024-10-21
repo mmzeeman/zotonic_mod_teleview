@@ -43,14 +43,8 @@ const actions = {};
  */
 
 model.present = (proposal) => {
-
-    /*
-     * Start
-     */
     if(proposal.is_start) {
         const arg = proposal.arg;
-
-        console.log("start", arg);
 
         model.id = arg.id;
         model.sts = arg.renderer_sts;
@@ -75,19 +69,15 @@ model.present = (proposal) => {
         model.pickle = arg.pickle;
 
         self.publish(cotonic.mqtt.fill("model/ui/insert/+id", model), { inner: true, priority: 10 });
-
-        self.subscribe(rendererEventTopic(model), actions.rendererEvent);
         self.subscribe("model/lifecycle/event/state", actions.lifecycleEvent);
-
-        // We are started.
         self.publish(cotonic.mqtt.fill("model/televiewClient/+televiewId/event/started", model), true);
     }
 
-    /*
-     * Reset
-     */
+    if(proposal.is_subscribe) {
+        self.subscribe(rendererEventTopic(model), actions.rendererEvent);
+    }
+
     if(proposal.is_reset) {
-        console.log("reset");
         model.sts = undefined;
         model.keyframe  = undefined;
         model.keyframe_sn = 0;
@@ -98,52 +88,30 @@ model.present = (proposal) => {
 
         model.queuedCumulativePatch = undefined; 
         model.incrementalPatchQueue = [];
-
-        const topic = rendererEventTopic(model);
-
-        console.info("resubscribe");
-        self.unsubscribe(topic);
-        self.subscribe(topic, actions.rendererEvent);
     }
 
-    /*
-     * Update
-     */
     if(proposal.is_update) {
         model.handleUpdate(proposal.type, proposal.update);
     }
 
     if(proposal.is_current_frame_response) {
-        console.log("current-frame-response", proposal.update);
         model.handleCurrentFrameUpdate(proposal.update);
     }
 
-    /*
-     * Request Current Frame
-     */
     if(proposal.is_request_current_frame) {
         model.requestCurrentFrame();
     }
 
-    /*
-     * Still watching? 
-     */
     if(proposal.is_still_watching && model.updateTopic && state.isPageVisible(model)) {
         self.publish(
             cotonic.mqtt.fill("bridge/origin/model/teleview/post/+teleview_id/still_watching/+renderer_id", model),
             {});
     }
 
-    /*
-     * Stop
-     */
     if(proposal.is_stop && model.updateTopic) {
         self.publish(cotonic.mqtt.fill("model/televiewClient/+televiewId/event/stopped", model), true);
     }
 
-    /*
-     * Page lifecycle event
-     */
     if(proposal.is_lifecycle_event) {
         if(model.page_state === "passive" && proposal.state === "hidden") {
             model.hidden_start_time = Date.now(); 
@@ -154,7 +122,6 @@ model.present = (proposal) => {
             const now = Date.now();
 
             if(model.hidden_start_time !== undefined && ((now - model.hidden_start_time) > 5000)) {
-                console.info("check view up to date");
                 setTimeout(actions.requestCurrentFrame, 0);
             }
 
@@ -169,16 +136,13 @@ model.present = (proposal) => {
         model.page_state = proposal.state;
     }
 
-    /*
-     * There was a current frame request error, but we need a new frame.
-     */
     if(proposal.is_current_frame_request_error) {
-        console.log("current-frame-request-error");
+        // [TODO] add a backoff mechanism for requesting current frames
         setTimeout(actions.requestCurrentFrame, 0);
     }
 
     if(proposal.is_renderer_down) {
-        // TODO: Needs to be handled.. But not sure how.
+        // [TODO]: Needs to be handled.. But not sure how.
         console.warn("Teleview: Renderer down", {id: model.id, reason: proposal.reason});
     }
 
@@ -191,8 +155,8 @@ model.requestCurrentFrame = () => {
 
     model.isCurrentFrameRequested = true;
     self.call(cotonic.mqtt.fill("bridge/origin/model/teleview/get/+teleview_id/current_frame/+renderer_id", model),
-              model.pickle,
-              {qos: 1})
+        {pickle: model.pickle, sts: model.sts, current_frame_sn: model.current_frame_sn},
+        {qos: 1})
         .then(actions.currentFrameResponse, actions.currentFrameRequestError)
         .finally(() => { model.isCurrentFrameRequested = false; });
 }
@@ -204,6 +168,9 @@ model.handleCurrentFrameUpdate = (update) => {
 
         if(model.sts !== update.sts) {
             model.sts = update.sts;
+            model.keyframe = undefined;
+            model.keyframe_sn = undefined;
+            self.unsubscribe(rendererEventTopic(model), actions.renderEvent, actions.subscribe);
         }
 
         model.current_frame = toUTF8(update.current_frame);
@@ -211,7 +178,7 @@ model.handleCurrentFrameUpdate = (update) => {
 
         model.handleQueuedIncremental();
     } else {
-        console.info("Teleview: Ignore current_frame, it is older or has same serial number as current frame.",
+        console.info("Teleview: Ignore current_frame, already up-to-date",
             {id: model.id,
                 stn: model.sts,
                 update_stn: update.sts,
@@ -230,13 +197,9 @@ model.handleQueuedIncremental = () => {
         }
 
         if(model.current_frame_sn + 1 === p.current_frame_sn) {
-            console.log("apply queued");
             model.current_frame = applyPatch(model.current_frame, p);
             model.current_frame_sn = p.current_frame_sn;
-        } else {
-            console.log("skip");
-        }
-
+        } 
     }
 }
 
@@ -378,7 +341,6 @@ actions.rendererEvent = (m, a) => {
 }
 
 actions.update = (type, update) => {
-    console.log(type);
     model.present({
         is_update: true,
         type: type,
@@ -403,7 +365,7 @@ actions.still_watching = () => {
 }
 
 actions.start = (args) => {
-    model.present( {is_start: true, arg: args[0] } );
+    model.present( {is_start: true, arg: args[0], is_subscribe: true } );
 }
 
 actions.handleEnsureStatus = (m, _a) => {
@@ -432,6 +394,10 @@ actions.lifecycleEvent = (m, _a) => {
         is_lifecycle_event: true,
         state: m.payload
     });
+}
+
+actions.subscribe = () => {
+    model.present({ is_subscribe: true });
 }
 
 actions.currentFrameResponse = (m) => {

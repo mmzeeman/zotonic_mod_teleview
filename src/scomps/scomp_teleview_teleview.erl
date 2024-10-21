@@ -92,7 +92,7 @@ render_teleview(#{ teleview_id := TeleviewId,
                                _ ->
                                    TeleviewElementArgs
                            end,
-    {Sts, CurrentFrame, SN} = current_frame(TeleviewId, RendererId, Pickle, Context1),
+    {Sts, CurrentFrame, SN} = current_frame(TeleviewId, RendererId, #{ <<"pickle">> => Pickle }, Context1),
     TeleviewElement = z_tags:render_tag(TeleviewWrapperElement, TeleviewElementArgs1, [ CurrentFrame ]),
     Script = render_script(Id, Params, RenderState#{ renderer_sts => Sts, current_frame_sn => SN }, Context1),
 

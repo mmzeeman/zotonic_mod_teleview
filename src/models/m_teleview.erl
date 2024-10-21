@@ -67,7 +67,7 @@ m_get([Teleview, <<"keyframe">>, Renderer | Rest], _Msg, Context) ->
     end;
 
 %% Request for the current frame
-m_get([Teleview, <<"current_frame">>, Renderer | Rest], #{ payload := Payload }, Context) when is_binary(Payload) ->
+m_get([Teleview, <<"current_frame">>, Renderer | Rest], #{ payload := Payload }, Context) when is_map(Payload) ->
     TeleviewId = z_convert:to_integer(Teleview),
     RendererId = z_convert:to_integer(Renderer),
 

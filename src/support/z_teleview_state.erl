@@ -119,14 +119,22 @@ get_current_frame(TeleviewId, RendererId, Context) ->
 
 % @doc Get the current frame of the specified teleview and rederer. By passing the pickle the
 % server (re)-starts the renderer when it is not running.
-get_current_frame(TeleviewId, RendererId, Pickle, Context) ->
+get_current_frame(TeleviewId, RendererId, #{ <<"pickle">> := Pickle }=R, Context) ->
     case get_current_frame(TeleviewId, RendererId, Context) of
         {error, enoent} ->
             #{ teleview_id := TeleviewId, renderer_id := RendererId,
                teleview_args := TeleviewArgs, renderer_args := RendererArgs } = z_utils:depickle(Pickle, Context),
             get_current_frame(TeleviewId, RendererId, TeleviewArgs, RendererArgs, Context);
-        Map when is_map(Map) ->
-            Map
+        #{ current_frame_sn := SN, sts := STS}=Map ->
+            %% Strip the current frame when we have a matching current frame number.
+            RFrameSN = maps:get(current_frame_sn, R, undefined),
+            RSTN = maps:get(current_frame_sn, R, undefined),
+            case RFrameSN == SN andalso RSTN == STS of
+                true ->
+                    maps:without([current_frame], Map);
+                false ->
+                    Map
+            end
     end.
 
 get_current_frame(TeleviewId, RendererId, TeleviewArgs, RendererArgs, Context) ->
