@@ -471,32 +471,22 @@ function applyPatch(source, update) {
     const array = new Uint8Array(buffer);
     const src = source;
 
-    function copyInto(dst, dst_offset, src, src_offset, length) {
-        src_offset = (src_offset === undefined) ? 0 : src_offset;
-        length = (length === undefined) ? src.length : length;
-
-        for(let i = 0; i < length; i++) {
-            dst[dst_offset+i] = src[src_offset+i];
-        }
-    }
-
     let src_idx = 0;
     let dst_idx = 0;
 
-    // [TODO] use Array.set.
     for(let i = 0, l = update.patch.length; i < l; i += 2) {
         const patch = update.patch[i];
         const v = update.patch[i+1];
 
         if(patch === "c") {
-            copyInto(array, dst_idx, src, src_idx, v);
+            array.set(src.subarray(src_idx, src_idx+v), dst_idx);
             src_idx += v;
             dst_idx += v;
         } else if(patch === "s") {
             src_idx += v;
         } else if(patch === "i") {
-            const data = toUTF8(v)
-            copyInto(array, dst_idx, data);
+            const data = toUTF8(v);
+            array.set(data, dst_idx);
             dst_idx += data.length;
         } else {
             throw Error("Unexpected patch");
