@@ -62,7 +62,6 @@ m_get([Teleview, <<"keyframe">>, Renderer | Rest], _Msg, Context) ->
             Frame = z_teleview_state:get_keyframe(TeleviewId, RendererId, Context),
             {ok, {Frame, Rest}};
         false ->
-            ?DEBUG({eaccess, keyframe, TeleviewId, RendererId}),
             {error, eaccess}
     end;
 
@@ -90,7 +89,6 @@ m_get([Teleview, <<"current_frame">>, Renderer | Rest], #{ }, Context) ->
                     Error
             end;
         false ->
-            ?DEBUG({eaccess, current_frame, TeleviewId, RendererId}),
             {error, eaccess}
     end;
 
@@ -111,7 +109,6 @@ m_post([Teleview, <<"still_watching">>, Renderer], _Msg, Context) ->
         true ->
             z_teleview_renderer:keep_alive(TeleviewId, RendererId, Context);
         false ->
-            ?DEBUG({eaccess, still_watching, TeleviewId, RendererId}),
             {error, eaccess}
     end;
 m_post(V, _Msg, _Context) ->

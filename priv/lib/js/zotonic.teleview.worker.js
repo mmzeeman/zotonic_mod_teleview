@@ -4,6 +4,9 @@
  *
  */
 
+const PAGE_VISIBILITY_TIMEOUT = 5000;
+const MAX_ERROR_RETRY_DELAY = 60000;
+
 const model = {
     id: undefined,
     teleview_id: undefined,
@@ -31,7 +34,9 @@ const model = {
 
     stop: false,
     page_state: "active",
-    hidden_start_time: undefined
+
+    hidden_start_time: undefined,
+    request_error_count: 0
 };
 
 const view = {};
@@ -95,11 +100,14 @@ model.present = (proposal) => {
     }
 
     if(proposal.is_current_frame_response) {
+        model.request_error_count = 0;
         model.handleCurrentFrameUpdate(proposal.update);
     }
 
     if(proposal.is_request_current_frame) {
-        model.requestCurrentFrame();
+        if(model.request_error_count ==  0) {
+            model.requestCurrentFrame();
+        }
     }
 
     if(proposal.is_still_watching && model.updateTopic && state.isPageVisible(model)) {
@@ -121,7 +129,7 @@ model.present = (proposal) => {
         if(model.page_state === "hidden" && proposal.state === "passive") {
             const now = Date.now();
 
-            if(model.hidden_start_time !== undefined && ((now - model.hidden_start_time) > 5000)) {
+            if(model.hidden_start_time !== undefined && ((now - model.hidden_start_time) > PAGE_VISIBILITY_TIMEOUT)) {
                 setTimeout(actions.requestCurrentFrame, 0);
             }
 
@@ -137,8 +145,9 @@ model.present = (proposal) => {
     }
 
     if(proposal.is_current_frame_request_error) {
-        // [TODO] add a backoff mechanism for requesting current frames
-        setTimeout(actions.requestCurrentFrame, 0);
+        console.log(model.request_error_count);
+        setTimeout(actions.requestCurrentFrame, Math.min(model.request_error_count * 1000, MAX_ERROR_RETRY_DELAY));
+        model.request_error_count += 1;
     }
 
     if(proposal.is_renderer_down) {
@@ -153,9 +162,15 @@ model.requestCurrentFrame = () => {
     if(model.isCurrentFrameRequested)
         return;
 
+    const args = { pickle: model.pickle };
+    if(model.current_frame) {
+        args.sts = model.sts;
+        args.current_frame_sn = model.current_frame_sn;
+    }
+
     model.isCurrentFrameRequested = true;
     self.call(cotonic.mqtt.fill("bridge/origin/model/teleview/get/+teleview_id/current_frame/+renderer_id", model),
-        {pickle: model.pickle, sts: model.sts, current_frame_sn: model.current_frame_sn},
+        args,
         {qos: 1})
         .then(actions.currentFrameResponse, actions.currentFrameRequestError)
         .finally(() => { model.isCurrentFrameRequested = false; });
@@ -164,12 +179,15 @@ model.requestCurrentFrame = () => {
 model.handleCurrentFrameUpdate = (update) => {
     if(model.sts === undefined
         || model.sts < update.sts
+        || (model.sts === update.sts && update.current_frame_sn === model.current_frame_sn && model.current_frame === undefined)
         || (model.sts === update.sts && update.current_frame_sn > model.current_frame_sn)) {
 
         if(model.sts !== update.sts) {
             model.sts = update.sts;
             model.keyframe = undefined;
             model.keyframe_sn = undefined;
+            // Just in case... resubscribe to the topic. The server could have forgotton
+            // the subscription because the session expired, or the server restarted.
             self.unsubscribe(rendererEventTopic(model), actions.renderEvent, actions.subscribe);
         }
 
@@ -181,6 +199,7 @@ model.handleCurrentFrameUpdate = (update) => {
         console.info("Teleview: Ignore current_frame, already up-to-date",
             {id: model.id,
                 stn: model.sts,
+                has_current_frame: !!model.current_frame,
                 update_stn: update.sts,
                 keyframe_sn: model.keyframe_sn,
                 current_frame_sn: model.current_frame_sn,
@@ -408,12 +427,9 @@ actions.currentFrameResponse = (m) => {
                 is_current_frame_response: true,
                 update: p.result
             });
-        } else if(p.result.state === "restarting") {
-            // The teleview is going to be restarted.
-            console.info("Teleview: Restarting", {id: model.id});
-            actions.reset();
         } else {
-            console.warn("Teleview: Unknown current frame response", {id: model.id});
+            console.warn("Teleview: Unexpected current frame response", {id: model.id});
+            actions.currentFrameRequestError();
         }
     }
 }

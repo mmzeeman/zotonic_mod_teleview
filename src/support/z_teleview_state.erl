@@ -127,8 +127,8 @@ get_current_frame(TeleviewId, RendererId, #{ <<"pickle">> := Pickle }=R, Context
             get_current_frame(TeleviewId, RendererId, TeleviewArgs, RendererArgs, Context);
         #{ current_frame_sn := SN, sts := STS}=Map ->
             %% Strip the current frame when we have a matching current frame number.
-            RFrameSN = maps:get(current_frame_sn, R, undefined),
-            RSTN = maps:get(current_frame_sn, R, undefined),
+            RFrameSN = maps:get(<<"current_frame_sn">>, R, undefined),
+            RSTN = maps:get(<<"sts">>, R, undefined),
             case RFrameSN == SN andalso RSTN == STS of
                 true ->
                     maps:without([current_frame], Map);
@@ -145,7 +145,6 @@ get_current_frame(TeleviewId, RendererId, TeleviewArgs, RendererArgs, Context) -
             case scomp_teleview_teleview:ensure_renderer(TeleviewArgs, RendererArgs, Context) of
                 {ok, TeleviewId, RendererId} ->
                     get_current_frame(TeleviewId, RendererId, Context);
-                    % #{ state => restarting };
                 {error, Error} ->
                     ?LOG_WARNING(#{ text => "Could not restart renderer",
                                     error => Error }),
@@ -250,7 +249,6 @@ handle_info(get_renderers_sup_pid, State) ->
 
 handle_info({tick, Interval}, State) ->
     try
-        %% ?DEBUG(tick),
         handle_render(#{ tick => Interval }, State)
     after
         trigger_tick(Interval)
