@@ -67,6 +67,7 @@ model.present = (proposal) => {
 
         model.queuedCumulativePatch = undefined; 
         model.incrementalPatchQueue = [];
+        model.request_error_count = 0;
 
         model.min_time = (arg.keyframe_min_time === undefined)?0:arg.keyframe_min_time;
         model.max_time = (arg.keyframe_max_time === undefined)?"infinite":arg.keyframe_max_time;
@@ -93,6 +94,7 @@ model.present = (proposal) => {
 
         model.queuedCumulativePatch = undefined; 
         model.incrementalPatchQueue = [];
+        model.request_error_count = 0;
     }
 
     if(proposal.is_update) {
@@ -186,6 +188,8 @@ model.handleCurrentFrameUpdate = (update) => {
             model.sts = update.sts;
             model.keyframe = undefined;
             model.keyframe_sn = undefined;
+            model.request_error_count = 0;
+
             // Just in case... resubscribe to the topic. The server could have forgotton
             // the subscription because the session expired, or the server restarted.
             self.unsubscribe(rendererEventTopic(model), actions.renderEvent, actions.subscribe);
