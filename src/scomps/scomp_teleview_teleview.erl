@@ -32,7 +32,6 @@ vary(_Params, _Context) -> nocache.
 %% is going to manage the view.
 
 render(Params, _Vars, Context) ->
-
     Topics = proplists:get_all_values(topic, Params),
     RendererArgs = proplists:get_value(vary, Params, #{}),
     Args = maps:without([topic, vary], maps:from_list(Params)),
@@ -41,7 +40,9 @@ render(Params, _Vars, Context) ->
 
     case ensure_renderer(TeleviewArgs, RendererArgs, Context) of
         {ok, TeleviewId, RendererId} ->
-            Pickle = z_utils:pickle(#{ teleview_args => TeleviewArgs,
+            Pickle = z_utils:pickle(#{ teleview_id => TeleviewId,
+                                       renderer_id => RendererId, 
+                                       teleview_args => TeleviewArgs,
                                        renderer_args => RendererArgs }, Context),
             render_teleview(#{ teleview_id => TeleviewId,
                                renderer_id => RendererId,
@@ -91,9 +92,9 @@ render_teleview(#{ teleview_id := TeleviewId,
                                _ ->
                                    TeleviewElementArgs
                            end,
-    CurrentFrame = current_frame(TeleviewId, RendererId, Pickle, Context1),
+    {Sts, CurrentFrame, SN} = current_frame(TeleviewId, RendererId, #{ <<"pickle">> => Pickle }, Context1),
     TeleviewElement = z_tags:render_tag(TeleviewWrapperElement, TeleviewElementArgs1, [ CurrentFrame ]),
-    Script = render_script(Id, Params, RenderState, Context1),
+    Script = render_script(Id, Params, RenderState#{ renderer_sts => Sts, current_frame_sn => SN }, Context1),
 
     {ok, [TeleviewElement, {javascript, Script}]}.
 
@@ -102,7 +103,7 @@ render_script(Id, Params, RenderState, Context) ->
     SrcUrl = z_lib_include:url([ <<"lib/js/zotonic.teleview.worker.js">> ], Context),
     Base = proplists:get_value(base, Params, <<"cotonic/cotonic-worker.js">>),
     BaseUrl = z_lib_include:url([ Base ], Context),
-    Name = proplists:get_value(name, Params, Id),
+    Name = proplists:get_value(teleview_worker_name, Params, Id),
     Args = z_json:encode(RenderState#{ id => Id }),
     Spawn = [ <<"cotonic.spawn_named(\"">>, z_utils:js_escape(Name), "\", \"", SrcUrl, "\", \"", BaseUrl, "\", ", Args, ");" ],
 
@@ -151,9 +152,9 @@ teleview_wrapper_element(#{ }) ->
 % @doc Get the teleview element wrapper element 
 current_frame(TeleviewId, RendererId, Pickle, Context) ->
     case z_teleview_state:get_current_frame(TeleviewId, RendererId, Pickle, Context) of
-        #{ current_frame := Frame } ->
-            Frame;
+        #{ sts := Sts, current_frame := Frame, current_frame_sn := SN } ->
+            {Sts, Frame, SN};
         _ ->
-            <<>>
+            {erlang:monotonic_time(millisecond), <<>>, 0}
     end.
 

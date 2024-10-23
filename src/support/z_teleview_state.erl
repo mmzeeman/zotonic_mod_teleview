@@ -8,7 +8,7 @@
 %% you may not use this file except in compliance with the License.
 %% You may obtain a copy of the License at
 %%
-%%     http://www.apache.org/licenses/LICENSE-2.0
+%%     https://www.apache.org/licenses/LICENSE-2.0
 %%
 %% Unless required by applicable law or agreed to in writing, software
 %% distributed under the License is distributed on an "AS IS" BASIS,
@@ -25,13 +25,12 @@
     start_link/4,
     start_renderer/3,
 
-    keep_alive/3,
-
     init_table/1,
-    store_current_frame/5,
-    get_current_frame/4,
+    store_current_frame/6,
 
-    store_keyframe/5,
+    get_current_frame/3, get_current_frame/4, get_current_frame/5,
+
+    store_keyframe/6,
     get_keyframe/3, 
 
     delete_frames/3
@@ -43,10 +42,6 @@
 -include_lib("zotonic_core/include/zotonic.hrl").
 
 -define(INTERVAL_MSEC, 30000).
-
--define(RENDERER_WARN_TIME, 60). % 5 min
--define(RENDERER_EXPIRE_TIME, 420). % 7 min
-
 -define(MAX_NO_RENDERERS_COUNT, 2).
 
 -record(state, {
@@ -55,13 +50,10 @@
     args :: term(),
 
     teleview_supervisor = undefined,  %% The supervisor of the teleview
-
     renderers_supervisor = undefined, %% The supervisor of all renderers
-    renderers = #{}, 
 
     no_renderers_count = 0 :: non_neg_integer(), %% Counter of how many times we saw that this
                                                  %% teleview has no renderers.
-
     context :: z:context()
 }).
 
@@ -75,7 +67,6 @@ start_link(Id, Supervisor, Args, Context) ->
 % @doc Start a renderer.
 -spec start_renderer(integer(), map(), z:context()) -> {ok, integer()} | {error, _}.
 start_renderer(TeleviewId, VaryArgs, Context) ->
-
     %% Generate a stable renderer id from the id of the teleview and the vary args of the renderer
     RendererId = mod_teleview:renderer_id(TeleviewId, VaryArgs),
 
@@ -87,11 +78,6 @@ start_renderer(TeleviewId, VaryArgs, Context) ->
             gen_server:call({via, z_proc, {{?MODULE, TeleviewId}, Context}},
                             {start_renderer, VaryArgs, z_context:prune_for_scomp(Context)})
     end.
-
-
-% @doc Tell the teleview state process to keep the renderer alive
-keep_alive(TeleviewId, RendererId, Context) ->
-    gen_server:cast({via, z_proc, {{?MODULE, TeleviewId}, Context}}, {keep_alive, RendererId}).
 
 
 % @doc Return true when the renderer is already started.
@@ -117,44 +103,68 @@ table_name(Context) ->
 
 
 % @doc Store the current frame of a renderer.
-store_current_frame(TeleviewId, RendererId, Frame, Sn, Context) ->
+store_current_frame(SpawnTimestamp, TeleviewId, RendererId, Frame, Sn, Context) ->
     Table = table_name(Context),
-    ets:insert(Table, {{current_frame, TeleviewId, RendererId}, Frame, Sn}).
+    ets:insert(Table, {{current_frame, TeleviewId, RendererId}, SpawnTimestamp, Frame, Sn}).
 
-% @doc Get the current frame of the specified 
-get_current_frame(TeleviewId, RendererId, Pickle, Context) ->
+% @doc Get the current frame of the specified teleview and rederer.
+get_current_frame(TeleviewId, RendererId, Context) ->
     Table = table_name(Context),
     case ets:lookup(Table, {current_frame, TeleviewId, RendererId}) of
         [] ->
-            %% The model already checked access to the teleview. 
-            %% Try to restart it.
-            #{ teleview_args := TeleviewArgs,
-               renderer_args := RendererArgs } = z_utils:depickle(Pickle, Context),
+            {error, enoent};
+        [{_Key, SpawnTimestamp, Frame, Sn}] ->
+            #{ state => ok, sts => SpawnTimestamp, current_frame => Frame, current_frame_sn => Sn }
+    end.
 
+% @doc Get the current frame of the specified teleview and rederer. By passing the pickle the
+% server (re)-starts the renderer when it is not running.
+get_current_frame(TeleviewId, RendererId, #{ <<"pickle">> := Pickle }=R, Context) ->
+    case get_current_frame(TeleviewId, RendererId, Context) of
+        {error, enoent} ->
+            #{ teleview_id := TeleviewId, renderer_id := RendererId,
+               teleview_args := TeleviewArgs, renderer_args := RendererArgs } = z_utils:depickle(Pickle, Context),
+            get_current_frame(TeleviewId, RendererId, TeleviewArgs, RendererArgs, Context);
+        #{ current_frame_sn := SN, sts := STS}=Map ->
+            %% Strip the current frame when we have a matching current frame number.
+            RFrameSN = maps:get(<<"current_frame_sn">>, R, undefined),
+            RSTN = maps:get(<<"sts">>, R, undefined),
+            case RFrameSN == SN andalso RSTN == STS of
+                true ->
+                    maps:without([current_frame], Map);
+                false ->
+                    Map
+            end
+    end.
+
+get_current_frame(TeleviewId, RendererId, TeleviewArgs, RendererArgs, Context) ->
+    case get_current_frame(TeleviewId, RendererId, Context) of
+        Map when is_map(Map) ->
+            Map;
+        {error, enoent} ->
             case scomp_teleview_teleview:ensure_renderer(TeleviewArgs, RendererArgs, Context) of
                 {ok, TeleviewId, RendererId} ->
-                    #{ state => restarting };
+                    get_current_frame(TeleviewId, RendererId, Context);
                 {error, Error} ->
                     ?LOG_WARNING(#{ text => "Could not restart renderer",
                                     error => Error }),
                     {error, restart_problem}
-            end;
-        [{_Key, Frame, Sn}] ->
-            #{ state => ok, current_frame => Frame, current_frame_sn => Sn }
+            end
     end.
 
 % @doc Store the keyframe of a renderer.
-store_keyframe(TeleviewId, RendererId, Frame, Sn, Context) ->
+store_keyframe(SpawnTimestamp, TeleviewId, RendererId, Frame, Sn, Context) ->
     Table = table_name(Context),
-    ets:insert(Table, {{keyframe, TeleviewId, RendererId}, Frame, Sn}).
+    ets:insert(Table, {{keyframe, TeleviewId, RendererId}, SpawnTimestamp, Frame, Sn}).
 
 get_keyframe(TeleviewId, RendererId, Context) ->
     Table = table_name(Context),
     case ets:lookup(Table, {keyframe, TeleviewId, RendererId}) of
         [] ->
             undefined;
-        [{_Key, Frame, Sn}] ->
-            #{ frame => Frame,
+        [{_Key, SpawnTimestamp, Frame, Sn}] ->
+            #{ sts => SpawnTimestamp,
+               frame => Frame,
                keyframe_sn => Sn }
     end.
 
@@ -177,7 +187,6 @@ init([Id, Supervisor, #{ topics := Topics }=Args, Context]) ->
     ok = subscribe(Topics, Context),
     ok = setup_tick(Args),
 
-    m_teleview:publish_event(<<"started">>, Id, #{ }, Context),
     trigger_check(),
         
     {ok, #state{id=Id, teleview_supervisor=Supervisor, args=Args, context=Context}}.
@@ -185,23 +194,14 @@ init([Id, Supervisor, #{ topics := Topics }=Args, Context]) ->
 handle_call({start_renderer, VaryArgs, Context}, _From,
             #state{renderers_supervisor=RenderersSup,
                    args=TeleviewArgs}=State) when is_pid(RenderersSup) ->
+
     %% Generate a stable renderer id from the id of the teleview and the vary args of the renderer
     RendererId = mod_teleview:renderer_id(State#state.id, VaryArgs),
-
     RenderArgs = maps:merge(TeleviewArgs, VaryArgs),
 
     case supervisor:start_child(RenderersSup, [RendererId, RenderArgs, Context]) of 
-        {ok, Pid} ->
-            MonitorRef = erlang:monitor(process, Pid),
-            Renderers1 = maps:put(Pid, #{renderer_id => RendererId,
-                                         last_check => z_utils:now(), 
-                                         monitor_ref => MonitorRef}, State#state.renderers),
-            m_teleview:publish_event(<<"start">>, State#state.id, RendererId, #{ }, State#state.context),
-
-            %% Trigger a synchronized render, and return the renderstate so it can be 
-            %% put on the page immediately
-            ok = z_teleview_renderer:sync_render(State#state.id, RendererId, State#state.args, Context),
-            {reply, {ok, RendererId}, State#state{no_renderers_count=0, renderers=Renderers1}};
+        {ok, _Pid} ->
+            {reply, {ok, RendererId}, State#state{no_renderers_count=0}};
         {error, {already_started, _Pid}} ->
             {reply, {ok, RendererId}, State#state{no_renderers_count=0}};
         {error, Error} ->
@@ -214,63 +214,27 @@ handle_call({start_renderer, _Args, _RenderContext}, _From, #state{args=_Televie
 handle_call(Msg, _From, State) ->
     {stop, {unknown_call, Msg}, State}.
 
-handle_cast({keep_alive, RendererId}, State) ->
-    Renderers1 = maps:map(fun(_Pid, Info) ->
-                                  case maps:get(renderer_id, Info) of
-                                      RendererId ->
-                                          Info#{last_check => z_utils:now()};
-                                      _ ->
-                                          Info
-                                  end
-                          end,
-                          State#state.renderers),
-    {noreply, State#state{renderers=Renderers1}};
-
 handle_cast(Msg, State) ->
     {stop, {unknown_cast, Msg}, State}.
 
-handle_info(check, #state{renderers=Renderers, no_renderers_count=N}=State)
-  when map_size(Renderers) =:= 0 andalso N > ?MAX_NO_RENDERERS_COUNT ->
-
-    F = fun() ->
-              ok = mod_teleview:stop_teleview(State#state.id, State#state.context)
-        end,
-    spawn(F),
-
-    {stop, normal, State};
-handle_info(check, #state{renderers=Renderers, renderers_supervisor=Sup}=State) ->
-    Now = z_utils:now(),
-
-    maps:map(fun(Pid, #{last_check := LastCheck}=RendererInfo) ->
-                     case Now of
-                         N when N < (LastCheck + ?RENDERER_WARN_TIME) ->
-                             ok;
-                         N when N < (LastCheck + ?RENDERER_EXPIRE_TIME) ->
-                             m_teleview:publish_event(<<"still_watching">>,
-                                                      State#state.id, maps:get(renderer_id, RendererInfo),
-                                                      #{},
-                                                      State#state.context);
-                         _ ->
-                             case supervisor:terminate_child(Sup, Pid) of
-                                 ok ->
-                                     m_teleview:publish_event(<<"stopped">>,
-                                                              State#state.id, maps:get(renderer_id, RendererInfo),
-                                                              #{},
-                                                              State#state.context),
-                                     supervisor:delete_child(Sup, Pid);
-                                 {error, Reason} ->
-                                     ?DEBUG({could_not_terminate, Reason})
-                             end
-                     end
-             end,
-             Renderers),
-
+handle_info(check, #state{renderers_supervisor=Sup}=State) ->
     trigger_check(),
 
-    case map_size(Renderers) of
+    {active, Active} = proplists:lookup(active, supervisor:count_children(Sup)),
+
+    case Active of
         0 ->
-            {noreply, State#state{no_renderers_count=State#state.no_renderers_count+1}};
-        _ ->
+            case State#state.no_renderers_count+1 of
+                N when N > ?MAX_NO_RENDERERS_COUNT ->
+                    F = fun() ->
+                                ok = mod_teleview:stop_teleview(State#state.id, State#state.context)
+                        end,
+                    spawn(F),
+                    {stop, normal, State};
+                Count ->
+                    {noreply, State#state{no_renderers_count=Count}}
+            end;
+        N when N > 0 ->
             {noreply, State}
     end;
 
@@ -282,18 +246,6 @@ handle_info(get_renderers_sup_pid, State) ->
             link(Pid),
             {noreply, State#state{renderers_supervisor=Pid}}
     end; 
-
-handle_info({'DOWN', _MonitorRef, process, Pid, Reason}, #state{renderers=Renderers}=State) ->
-    %% A renderer died.
-    case maps:get(Pid, Renderers, undefined) of
-        undefined ->
-            {noreply, State};
-        RendererInfo ->
-            RendererId = maps:get(renderer_id, RendererInfo),
-            m_teleview:publish_event(<<"down">>, State#state.id, RendererId, #{ reason => Reason }, State#state.context),
-            Renderers1 = maps:remove(Pid, Renderers),
-            {noreply, State#state{renderers=Renderers1}}
-    end;
 
 handle_info({tick, Interval}, State) ->
     try
@@ -308,8 +260,7 @@ handle_info({mqtt_msg, Msg}, State) ->
 handle_info(_Info, State) ->
     {noreply, State}.
 
-terminate(Reason, State) ->
-    m_teleview:publish_event(<<"stopped">>, State#state.id, #{ reason => Reason }, State#state.context),
+terminate(_Reason, _State) ->
     ok.
 
 code_change(_OldVsn, State, _Extra) ->
@@ -325,14 +276,8 @@ handle_render(Msg, State) ->
                 undefined -> State#state.args;
                 NewArgs when is_map(NewArgs) -> NewArgs
             end,
-
-    trigger_render(State#state.id,
-                   State#state.renderers,
-                   Args1,
-                   State#state.context),
-
+    trigger_render(supervisor:which_children(State#state.renderers_supervisor), Args1, State#state.context),
     {noreply, State#state{args=Args1}}.
-
 
 state_context(Args, Context) ->
     case z_notifier:first({teleview_state_init, Args}, Context) of
@@ -376,13 +321,14 @@ trigger_tick(TickInterval) ->
 trigger_check() ->
     erlang:send_after(?INTERVAL_MSEC, self(), check).
 
-trigger_render(TeleviewId, Renderers, Args, Context) ->
-    maps:map(fun(_RendererSupPid, #{renderer_id := RendererId}) ->
-                     z_teleview_renderer:render(TeleviewId, RendererId, Args, Context)
-             end,
-             Renderers),
+trigger_render(Renderers, Args, Context) ->
+    lists:foreach(fun({_, Pid, _, _}) when is_pid(Pid) ->
+                          z_teleview_renderer:render(Pid, Args, Context);
+                     ({_,_,_,_}) ->
+                          skip
+                  end,
+                  Renderers),
     ok.
-
 
 % Get renderers supervisor pid from the supervisor.
 get_renderers_sup_pid(SupervisorPid) when is_pid(SupervisorPid) ->
