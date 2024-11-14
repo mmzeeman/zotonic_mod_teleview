@@ -38,6 +38,7 @@
 
     start_teleview/2,
     stop_teleview/2,
+    stop_all/1,
 
     start_renderer/3,
 
@@ -101,6 +102,17 @@ stop_teleview(Id, Context) ->
         _ ->
             ok
     end.
+
+% @doc Stop all televiews
+stop_all(Context) ->
+    Children = supervisor:which_children(z_utils:name_for_site(?SERVER, Context)),
+    lists:foreach(
+        fun({_, Pid, _, _}) ->
+            exit(Pid, shutdown)
+        end,
+        Children
+    ).
+
 
 % @doc Start a new renderer belonging to a teleview. The passed args and context are
 % used for rendering. The teleview must already be started earlier.
