@@ -20,6 +20,8 @@
 -author("Maas-Maarten Zeeman <mmzeeman@xs4all.nl>").
 -behaviour(gen_server).
 
+-include_lib("include/teleview.hrl").
+
 % api
 -export([
     start_link/4,
@@ -29,6 +31,8 @@
     store_current_frame/6,
 
     get_current_frame/3, get_current_frame/4, get_current_frame/5,
+
+    model_post/4,
 
     store_keyframe/6,
     get_keyframe/3, 
@@ -45,7 +49,7 @@
 -define(MAX_NO_RENDERERS_COUNT, 2).
 
 -record(state, {
-    id,
+    id :: mod_teleview:id(),
 
     args :: term(),
 
@@ -78,6 +82,10 @@ start_renderer(TeleviewId, VaryArgs, Context) ->
             gen_server:call({via, z_proc, {{?MODULE, TeleviewId}, Context}},
                             {start_renderer, VaryArgs, z_context:prune_for_scomp(Context)})
     end.
+
+model_post(TeleviewId, Path, Msg, Context) ->
+    gen_server:call({via, z_proc, {{?MODULE, TeleviewId}, Context}},
+                    {model_post, Path, Msg, z_context:prune_for_scomp(Context)}).
 
 
 % @doc Return true when the renderer is already started.
@@ -211,6 +219,17 @@ handle_call({start_renderer, VaryArgs, Context}, _From,
 handle_call({start_renderer, _Args, _RenderContext}, _From, #state{args=_TeleviewArgs}=State) ->
     {stop, no_renderer_supervisor, State};
 
+handle_call({model_post, Path, Msg, CallContext}, _From, State) ->
+    case z_notifier:first(#teleview_model_post{ id = State#state.id, path = Path, msg = Msg, args = State#state.args}, CallContext) of
+        undefined ->
+            {reply, ok, State};
+        {ok, Args1} ->
+            State1 = State#state{ args = Args1 },
+            ?DEBUG(render),
+            handle_render(#{ state_update => true }, State1),
+            {reply, ok, State1}
+    end;
+
 handle_call(Msg, _From, State) ->
     {stop, {unknown_call, Msg}, State}.
 
@@ -272,7 +291,9 @@ code_change(_OldVsn, State, _Extra) ->
 
 handle_render(Msg, State) ->
     %% Trigger a render on all renderers.
-    Args1 = case z_notifier:first({teleview_render, State#state.id, Msg, State#state.args}, State#state.context) of
+    Args1 = case z_notifier:first(#teleview_render{ id = State#state.id,
+                                                    msg = Msg,
+                                                    args = State#state.args}, State#state.context) of
                 undefined -> State#state.args;
                 NewArgs when is_map(NewArgs) -> NewArgs
             end,
@@ -280,7 +301,7 @@ handle_render(Msg, State) ->
     {noreply, State#state{args=Args1}}.
 
 state_context(Args, Context) ->
-    case z_notifier:first({teleview_state_init, Args}, Context) of
+    case z_notifier:first(#teleview_state_init{args = Args}, Context) of
         undefined ->
             {Args, z_acl:anondo(Context)};
         #context{}=Context1 ->

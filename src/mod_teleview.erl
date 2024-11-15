@@ -28,6 +28,7 @@
 -behaviour(supervisor).
 
 -include_lib("zotonic_core/include/zotonic.hrl").
+-include_lib("include/teleview.hrl").
 
 -export([start_link/1]).
 -export([init/1]).
@@ -52,7 +53,11 @@
     renderer_id/2
 ]).
 
+-export_type([id/0]).
+
 -define(SERVER, ?MODULE).
+
+-type(id() :: integer()).
 
 start_link(Args) ->
     {context, Context} = proplists:lookup(context, Args),
@@ -95,10 +100,7 @@ start_teleview(Id, #{ template := _Template } = Args, Context) ->
 stop_teleview(Id, Context) ->
     case z_proc:whereis_name({{z_teleview_sup, Id}, Context}) of
         Pid when is_pid(Pid) ->
-            case supervisor:terminate_child(z_utils:name_for_site(?SERVER, Context), Pid) of
-                ok -> ok;
-                {error, not_found} -> ok
-            end;
+            terminate_teleview_sup(Pid, Context);
         _ ->
             ok
     end.
@@ -108,11 +110,10 @@ stop_all(Context) ->
     Children = supervisor:which_children(z_utils:name_for_site(?SERVER, Context)),
     lists:foreach(
         fun({_, Pid, _, _}) ->
-            exit(Pid, shutdown)
+                terminate_teleview_sup(Pid, Context)
         end,
         Children
     ).
-
 
 % @doc Start a new renderer belonging to a teleview. The passed args and context are
 % used for rendering. The teleview must already be started earlier.
@@ -191,4 +192,16 @@ init(Args) ->
        [TeleviewSpec]
       }
     }.
+
+%%
+%% Helpers
+%%
+
+terminate_teleview_sup(Pid, Context) ->
+    case supervisor:terminate_child(z_utils:name_for_site(?SERVER, Context), Pid) of
+        ok ->
+            ok;
+        {error, not_found} ->
+            ok
+    end.
 
