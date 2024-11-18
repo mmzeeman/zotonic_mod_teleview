@@ -23,9 +23,6 @@
     cleanup_table/1,
     table/1,
 
-    %% store_args/2,
-    %% get_args/2,
-
     ensure_teleview_access/2,
     ensure_teleview_access/3,
 
@@ -33,6 +30,7 @@
     ensure_renderer_access/4,
 
     is_view_allowed/3,
+    is_post_allowed/2,
 
     is_event_subscribe_allowed/2,
     is_event_subscribe_allowed/3
@@ -71,7 +69,10 @@ ensure_renderer_access(TeleviewId, RendererId, Context) ->
 ensure_renderer_access(Key, TeleviewId, RendererId, Context) ->
     ensure_entry(Key, renderer_entry(TeleviewId, RendererId), Context).
 
-
+%%
+is_post_allowed(TeleviewId, Context) ->
+    Key = acl_key(Context),
+    is_entry_found(Key, teleview_entry(TeleviewId), Context).
 %%
 is_view_allowed(TeleviewId, RendererId, Context) ->
     Key = acl_key(Context),

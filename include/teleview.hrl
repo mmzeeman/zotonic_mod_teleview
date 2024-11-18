@@ -16,7 +16,11 @@
 %% See the License for the specific language governing permissions and
 %% limitations under the License.
 
--record(teleview_state_init, {
+-record(teleview_init, {
+   args :: map()
+}).
+
+-record(teleview_renderer_init, {
    args :: map()
 }).
 
@@ -26,7 +30,7 @@
     args :: map()
 }).
 
--record(teleview_model_post, {
+-record(teleview_post, {
     id :: mod_teleview:id(),
     path :: mqtt_sessions:topic(),
     msg :: mqtt_packet_map:mqtt_packet(),

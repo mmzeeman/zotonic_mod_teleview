@@ -34,6 +34,7 @@
 -define(PATCH_OVERHEAD, 15).
 
 -include_lib("zotonic_core/include/zotonic.hrl").
+-include_lib("include/teleview.hrl").
 
 -export([
     start_link/4,
@@ -196,7 +197,7 @@ render_and_broadcast_patch(Args, State) ->
 
 %% 
 renderer_context(Args, Context) ->
-    case z_notifier:first({teleview_renderer_init, Args}, Context) of
+    case z_notifier:first(#teleview_renderer_init{ args = Args }, Context) of
         undefined ->
             z_acl:anondo(Context);
         #context{} = NewContext ->

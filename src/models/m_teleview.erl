@@ -113,10 +113,14 @@ m_post([Teleview, <<"still_watching">>, Renderer], _Msg, Context) ->
             {error, eaccess}
     end;
 
-m_post([Teleview | Path], Msg, Context) ->
+m_post([Teleview, <<"state">> | Path], Msg, Context) ->
     TeleviewId = z_convert:to_integer(Teleview),
-    ?DEBUG(z_teleview_state:model_post(TeleviewId, Path, Msg, Context)),
-    ok;
+    case z_teleview_acl:is_post_allowed(TeleviewId, Context) of
+        true ->
+            z_teleview_state:post(TeleviewId, Path, Msg, Context);
+        false ->
+            {error, eaccess}
+    end;
 
 m_post(V, _Msg, _Context) ->
     ?LOG_INFO("Unknown ~p post: ~p", [?MODULE, V]),

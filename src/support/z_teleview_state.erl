@@ -32,7 +32,7 @@
 
     get_current_frame/3, get_current_frame/4, get_current_frame/5,
 
-    model_post/4,
+    post/4,
 
     store_keyframe/6,
     get_keyframe/3, 
@@ -83,12 +83,15 @@ start_renderer(TeleviewId, VaryArgs, Context) ->
                             {start_renderer, VaryArgs, z_context:prune_for_scomp(Context)})
     end.
 
-model_post(TeleviewId, Path, Msg, Context) ->
+% @doc Send model post to the teleview state process.
+-spec post(mod_teleview:id(), z_model:path(), term(),  z:context()) -> {ok, term()} | ok | {error, term()}.
+post(TeleviewId, Path, Msg, Context) ->
     gen_server:call({via, z_proc, {{?MODULE, TeleviewId}, Context}},
-                    {model_post, Path, Msg, z_context:prune_for_scomp(Context)}).
+                    {post, Path, Msg, z_context:prune_for_scomp(Context)}).
 
 
 % @doc Return true when the renderer is already started.
+-spec is_renderer_already_started(mod_teleview:id(), mod_teleview:id(), z:context()) -> boolean().
 is_renderer_already_started(TeleviewId, RendererId, Context) ->
     z_teleview_renderer:is_already_started(TeleviewId, RendererId, Context).
 
@@ -219,13 +222,12 @@ handle_call({start_renderer, VaryArgs, Context}, _From,
 handle_call({start_renderer, _Args, _RenderContext}, _From, #state{args=_TeleviewArgs}=State) ->
     {stop, no_renderer_supervisor, State};
 
-handle_call({model_post, Path, Msg, CallContext}, _From, State) ->
-    case z_notifier:first(#teleview_model_post{ id = State#state.id, path = Path, msg = Msg, args = State#state.args}, CallContext) of
+handle_call({post, Path, Msg, CallContext}, _From, State) ->
+    case z_notifier:first(#teleview_post{ id = State#state.id, path = Path, msg = Msg, args = State#state.args}, CallContext) of
         undefined ->
             {reply, ok, State};
         {ok, Args1} ->
             State1 = State#state{ args = Args1 },
-            ?DEBUG(render),
             handle_render(#{ state_update => true }, State1),
             {reply, ok, State1}
     end;
@@ -301,7 +303,7 @@ handle_render(Msg, State) ->
     {noreply, State#state{args=Args1}}.
 
 state_context(Args, Context) ->
-    case z_notifier:first(#teleview_state_init{args = Args}, Context) of
+    case z_notifier:first(#teleview_init{args = Args}, Context) of
         undefined ->
             {Args, z_acl:anondo(Context)};
         #context{}=Context1 ->
