@@ -100,6 +100,7 @@ m_get(V, _Msg, _Context) ->
 %%
 %% Model Posts
 %%
+%%
 
 m_post([Teleview, <<"still_watching">>, Renderer], _Msg, Context) ->
     TeleviewId = z_convert:to_integer(Teleview),
@@ -111,6 +112,16 @@ m_post([Teleview, <<"still_watching">>, Renderer], _Msg, Context) ->
         false ->
             {error, eaccess}
     end;
+
+m_post([Teleview, <<"state">> | Path], Msg, Context) ->
+    TeleviewId = z_convert:to_integer(Teleview),
+    case z_teleview_acl:is_post_allowed(TeleviewId, Context) of
+        true ->
+            z_teleview_state:post(TeleviewId, Path, Msg, Context);
+        false ->
+            {error, eaccess}
+    end;
+
 m_post(V, _Msg, _Context) ->
     ?LOG_INFO("Unknown ~p post: ~p", [?MODULE, V]),
     {error, unknown_path}.
