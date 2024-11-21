@@ -32,7 +32,8 @@ vary(_Params, _Context) -> nocache.
 %% is going to manage the view.
 
 render(Params, _Vars, Context) ->
-    Topics = proplists:get_all_values(topic, Params),
+    ScompTopics = proplists:get_all_values(topic, Params),
+    Topics = map_topics(ScompTopics, Context),
     RendererArgs = proplists:get_value(vary, Params, #{}),
     Args = maps:without([topic, vary], maps:from_list(Params)),
 
@@ -61,6 +62,25 @@ render(Params, _Vars, Context) ->
 %%
 %% Helpers
 %%
+
+map_topics(Topics, Context) ->
+    lists:filtermap(
+        fun(T) ->
+            case z_mqtt:map_topic(T, Context) of
+                {ok, T1} ->
+                    {true, z_mqtt:flatten_topic(T1)};
+                {error, Reason} ->
+                    ?LOG_NOTICE(#{
+                        text => <<"Error on mapping teleview topic">>,
+                        in => zotonic_mod_teleview,
+                        result => error,
+                        reason => Reason,
+                        topic => T
+                    }),
+                    false
+            end
+        end,
+        Topics).
 
 % @doc Make sure the teleview renderer is started.
 ensure_renderer(undefined, undefined, _Context) ->
