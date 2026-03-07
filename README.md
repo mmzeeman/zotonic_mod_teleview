@@ -1,19 +1,86 @@
-# zotonic_mod_teleview
+# zotonic_mod_teleview 📺
 
-Mod teleview provides live updating server rendered views.
-
-📺
+> Live-updating, server-rendered views for [Zotonic](https://zotonic.com) — powered by [MQTT](https://mqtt.org) and [Cotonic](https://cotonic.org).
 
 ![Teleview](https://user-images.githubusercontent.com/1024972/142467768-6838d498-2611-40dd-ae3a-60b5e474d047.jpg)
 
-# Introduction
+`zotonic_mod_teleview` lets you embed server-rendered HTML fragments in a Zotonic page that stay **automatically up to date** — without full-page reloads. The server pushes incremental DOM patches over MQTT; the client applies them seamlessly, just like a video stream for your UI.
 
-Teleview makes it possible to have server side rendered views, which update on the client. The communication
-between the teleview and its client-side viewport is done via MQTT topics. Client side teleview viewports 
-subscribe to a renderer, the renderer sends a video like update stream which allows the viewport to gradually
-update its part of the dom-tree.
+## Key Features
 
-# Add a teleview to a page
+- **Server-side rendering with live DOM updates** — no full page reloads; only the changed parts of the DOM are updated.
+- **Video-like streaming updates via MQTT** — keyframe, cumulative, and incremental patches keep bandwidth minimal and clients in sync.
+- **Per-renderer ACL, language, and user-specific variation** via `vary` — serve different views to admins, visitors, or individual users from a single teleview.
+- **Automatic renderer lifecycle management** — renderers start on demand when a client subscribes and stop automatically when no viewers remain.
+- **Built on Zotonic + Cotonic** — works seamlessly within the Zotonic ecosystem using the standard MQTT broker already present on every page.
+
+## How It Works
+
+### Client Side
+
+The client side teleview component is built with [Cotonic](https://cotonic.org). This is a JavaScript library which acts as middleware.
+Different components can be added. These components can then communicate by using its broker. The broker provides a [MQTT](https://mqtt.org)
+publish/subscribe model. Cotonic makes it possible for a page to connect to multiple MQTT brokers. [Zotonic](https://zotonic.com) uses
+the Cotonic library. Normally a page opens one MQTT connection to the server from which the page was loaded. This is called the *origin*.
+
+![20230208144933](https://user-images.githubusercontent.com/1024972/217549349-e5ad5147-dbd9-4b9b-a7bb-e30ed303d991.png)
+
+### Server Side
+
+Teleview runs as a Zotonic module.
+
+Each teleview has its own id and consists of a state process, which manages the subscription to the topics it listens to, and one or more
+renderer processes which can hold private vary properties used for rendering.
+
+![20230209171459](https://user-images.githubusercontent.com/1024972/217871548-a730156b-88f0-4eef-b207-98682fc19942.png)
+
+*Zotonic High Level Architecture*
+
+![20230208151717](https://user-images.githubusercontent.com/1024972/217556825-6931f2ff-84b4-46e6-a545-ffef7fd429f4.png)
+
+*Anatomy of a Zotonic Module*
+
+![20230209142201](https://user-images.githubusercontent.com/1024972/217824424-241f74c8-29d8-42f9-9bc1-86c06afd1546.png)
+
+*Teleview Module*
+
+## Getting Started
+
+### Prerequisites
+
+- A running [Zotonic](https://zotonic.com) installation.
+- `zotonic_mod_teleview` enabled for your site.
+
+### 1. Add a teleview to a template
+
+Put a `{% teleview %}` scomp into your template:
+
+```
+{% teleview
+    type = "example"
+    template = "_example_teleview.tpl"
+    topic = "model/example/event/#"
+    
+    extra_parameter_a = 100
+    extra_parameter_b = "hello world"
+    
+    vary = %{ user_id = m.acl.user }
+%}
+```
+
+When this scomp is placed on a page, it ensures the teleview and renderer are started. A teleview
+can have multiple renderers depending on the situation — a different renderer can be started because of
+authorization levels, giving different admin and visitor views, or different views per user id, language,
+and other possibilities.
+
+The scomp sends a notification `ensure_teleview`. An observer can then make sure a teleview process and
+a renderer is started. When the renderer is already started, the current renderer state will be added to the
+HTML output of the teleview scomp.
+
+A piece of JavaScript code will subscribe itself to the update topic of the teleview renderer. This will keep
+the view updated.
+
+The full scomp signature is:
 
 ```
 {% teleview 
@@ -31,84 +98,10 @@ update its part of the dom-tree.
 %}
 ```
 
-When this scomp is placed on a page, the scomp will ensure the teleview and renderer are started. A teleview
-can have multiple renderers depending on the situation. A different renderer could be started because of 
-authorization levels. This means different admin and visitor views. Or different views per user id, language
-and other possibilities.
+### 2. Add observer hooks on the server side
 
-The scomp will sent a notification `ensure_teleview`. An observer can then make sure a teleview process and 
-a renderer is started. When the renderer is already started, the current renderer state will be added to the
-html output of the teleview scomp.
-
-A piece of javascript code will subscribe itself to the update topic of the teleview renderer. This will keep
-the view updated.
-
-
-# How to implement a Teleview.
-
-Put a teleview scomp into your tempate
-
-```
-{% teleview
-    type = "example"
-    template = "_example_teleview.tpl"
-    topic = "model/example/event/#"
-    
-    extra_parameter_a = 100
-    extra_parameter_b = "hello world"
-    
-    vary = %{ user_id = m.acl.user }
-%}
-```
-
-In the above example a teleview will be started with the parameters given. 
-
-A teleview process will subscribe itself to the supplied topics, and a
-renderer process will be started. It will take care of rendering and sending
-updates to the client side viewer.
-
-Each renderer can have different parameters so they can render the interface
-in different languages, for different users, or with a special set of acl 
-settings.
-
-In order to support that two different notifications can be setup on the 
-server side.
-
-## Technical Overview
-
-### Client Side
-
-The client side teleview component is build with [Cotonic](https://cotonic.org). This is a javascript library which acts as middleware.
-Different components can be added. These components can then communicate by using its broker. The broker provides a [MQTT](https://mqtt.org)
-publish subscribe model. Cotonic makes it possible for a page to connect to multiple mqtt brokers. [Zotonic](https://zotonic.com) uses
-the Cotonic library. Normally a page opens one mqtt connection to the server from which the page was loaded. This is called the *origin*.
-
-![20230208144933](https://user-images.githubusercontent.com/1024972/217549349-e5ad5147-dbd9-4b9b-a7bb-e30ed303d991.png)
-
-### Server Side
-
-Teleview Runs as a zotonic module. 
-
-Each teleview has its own id and consists of a state process, which manages the subscription to the topics it listens too, and one or more
-renderer processes which can hold private vary properties used for rendering. 
-
-
-![20230209171459](https://user-images.githubusercontent.com/1024972/217871548-a730156b-88f0-4eef-b207-98682fc19942.png)
-
-*Zotonic High Level Architecture*
-
-![20230208151717](https://user-images.githubusercontent.com/1024972/217556825-6931f2ff-84b4-46e6-a545-ffef7fd429f4.png)
-
-*Anatomy of a Zotonic Module*
-
-![20230209142201](https://user-images.githubusercontent.com/1024972/217824424-241f74c8-29d8-42f9-9bc1-86c06afd1546.png)
-
-*Teleview Module*
-
-[TODO]
-
-
-# Zotonic Server Side
+Implement the following notifications in your Zotonic module to control the context used for
+state management and rendering:
 
 ```erlang
 
@@ -125,10 +118,12 @@ observe_teleview_renderer_init(_InitArgs, _Context) ->
     undefined.
 ```
 
+Each renderer can have different parameters so they can render the interface
+in different languages, for different users, or with a special set of ACL settings.
 
-# Technical Details
+## Technical Reference
 
-## MQTT Topics
+### MQTT Topics
 
 #### `model/teleview/get/<id>/state/<renderer-ref>`
 
@@ -152,8 +147,8 @@ the current state of the teleview viewer has to be reset.
 #### `model/teleview/event/<id>/still-watching/<renderer-ref>`
 
 A renderer will send `still-watching` messages to its viewers. When it does not
-receive a response, the renderer assumes that nobody is interested in updates, 
-and will stop itself. When a teleview has no more renderers, it will be stopped 
+receive a response, the renderer assumes that nobody is interested in updates,
+and will stop itself. When a teleview has no more renderers, it will be stopped
 too.
 
 #### `model/teleview/event/<id>/update/<renderer-ref>/+(patch_type)`
@@ -180,7 +175,7 @@ by a teleview viewport on the client side by placing it in the DOM-tree.
 
 ##### `cumulative`
 
-An **cumulative** update is a patch against the last keyframe of a teleview. It is short for
+A **cumulative** update is a patch against the last keyframe of a teleview. It is short for
 *cumulative patch*. The view of this frame can be made visible by applying the patch against the
 text representation of the keyframe with the specified serial number. It will result in a new
 text representation which can be placed in the DOM-tree. The patched keyframe document is
@@ -200,12 +195,12 @@ used to update the view.
 ##### `incremental`
 
 An **incremental** update is a patch against the *current frame*. The view of this frame can
-be made visible by applying the patch against the text representation of the 
-current frame, and placing it in the DOM-tree. After applying the patch, the resulting text 
+be made visible by applying the patch against the text representation of the
+current frame, and placing it in the DOM-tree. After applying the patch, the resulting text
 representation will be the new current frame.
 
-*Note* incremental updates must be applied, when they are skipped, it will not be possible to
-construct a new current frame by applying patches. The teleview viewer will have to wait for 
+*Note* Incremental updates must be applied; when they are skipped, it will not be possible to
+construct a new current frame by applying patches. The teleview viewer will have to wait for
 a new keyframe. Because of this drawback, teleview renderer will try to send cumulative updates
 as often as possible. Only when the patch against the keyframe becomes too complex, or the minimum time
 between keyframes is passed, an incremental patch will be sent.
@@ -233,10 +228,10 @@ Example:
 
 Which means, copy 100 characters from the current document to the new, skip 51 characters from the current document, insert "<b>Hello World</b>", and copy 57 characters from the current document to the new one.
 
-## Supervision Tree
+### Supervision Tree
 
-The teleview zotonic module is a supervisor. It can start televiews. Televiews are a process which manages
-the state, and a collection of renderers. The renderers take care of producing a render. Each renderer can 
+The teleview Zotonic module is a supervisor. It can start televiews. Televiews are a process which manages
+the state, and a collection of renderers. The renderers take care of producing a render. Each renderer can
 have its own ACL and language settings. The state process selects the right renderer for the client side of
 the teleview.
 
