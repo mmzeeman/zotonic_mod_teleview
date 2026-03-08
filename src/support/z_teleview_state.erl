@@ -195,6 +195,8 @@ init([Id, Supervisor, #{ topics := Topics }=Args, Context]) ->
 
     self() ! get_renderers_sup_pid,
 
+    ?DEBUG(Topics),
+
     ok = subscribe(Topics, Context),
     ok = setup_tick(Args),
 
