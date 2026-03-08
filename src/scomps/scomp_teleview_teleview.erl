@@ -1,8 +1,8 @@
 %% @author Maas-Maarten Zeeman <mmzeeman@xs4all.nl>
-%% @copyright 2019-2024 Maas-Maarten Zeeman
+%% @copyright 2019-2026 Maas-Maarten Zeeman
 %% @doc Put a teleview on the page.
 
-%% Copyright 2019-2024 Maas-Maarten Zeeman
+%% Copyright 2019-2026 Maas-Maarten Zeeman
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -19,7 +19,7 @@
 -module(scomp_teleview_teleview).
 -behaviour(zotonic_scomp).
 
--export([vary/2, render/3, ensure_renderer/3]).
+-export([vary/2, render/3, ensure_renderer/3, map_topics/2]).
 
 -include_lib("zotonic_core/include/zotonic.hrl").
 
@@ -33,7 +33,9 @@ vary(_Params, _Context) -> nocache.
 
 render(Params, _Vars, Context) ->
     ScompTopics = proplists:get_all_values(topic, Params),
-    Topics = map_topics(ScompTopics, Context),
+    ?DEBUG(ScompTopics),
+
+    Topics = ?DEBUG(map_topics(ScompTopics, Context)),
     RendererArgs = proplists:get_value(vary, Params, #{}),
     Args = maps:without([topic, vary], maps:from_list(Params)),
 

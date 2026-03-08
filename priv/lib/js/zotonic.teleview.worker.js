@@ -27,12 +27,12 @@ const model = {
 
     isCurrentFrameRequested: false,
 
-    max_time: undefined,
-    min_time: undefined,
+    // max_time: undefined,
+    // min_time: undefined,
 
     pickle: undefined,
 
-    stop: false,
+    // stop: false,
     page_state: "active",
 
     hidden_start_time: undefined,
@@ -68,9 +68,6 @@ model.present = (proposal) => {
         model.queuedCumulativePatch = undefined; 
         model.incrementalPatchQueue = [];
         model.request_error_count = 0;
-
-        model.min_time = (arg.keyframe_min_time === undefined)?0:arg.keyframe_min_time;
-        model.max_time = (arg.keyframe_max_time === undefined)?"infinite":arg.keyframe_max_time;
 
         model.pickle = arg.pickle;
 
@@ -118,9 +115,11 @@ model.present = (proposal) => {
             {});
     }
 
+    /*
     if(proposal.is_stop && model.updateTopic) {
         self.publish(cotonic.mqtt.fill("model/televiewClient/+televiewId/event/stopped", model), true);
     }
+    */
 
     if(proposal.is_lifecycle_event) {
         if(model.page_state === "passive" && proposal.state === "hidden") {
@@ -336,81 +335,47 @@ state.representation = (model) => {
 }
 
 state.nextAction = (model) => {
-    if(model.stop && model.updateTopic) {
-        actions.stop();
-    }
 }
 
 /**
  * Actions
  */
 
+actions.start = (args) => {
+    model.present( {is_start: true, arg: args[0], is_subscribe: true } );
+}
+
 actions.rendererEvent = (m, a) => {
-    const t = a.evt_type;
-
-    if(t === "update") {
-        actions.update(a.args[0], m.payload);
-    } else if(t === "reset") {
-        actions.reset();
-    } else if(t === "still_watching") {
-        actions.still_watching();
-    } else if(t === "down") {
-        actions.rendererDown(m.payload.reason);
-    } else if(t === "stopped") {
-        actions.rendererStopped(m.payload.reason);
-    } else {
-        console.warn("Teleview: Unknown renderer event", {id: model.id, event_type: t});
+    switch(a.evt_type) {
+        case "update":
+            model.present({ is_update: true, type: a.args[0], update: m.payload });
+            break;
+        case "reset":
+            model.present({is_reset: true});
+            break;
+        case "still_watching":
+            model.present({is_still_watching: true});
+            break;
+        case "down":
+            model.present({is_renderer_down: true, reason: m.payload.reason});
+            break;
+        case "stopped":
+            // [TODO] The renderer is permanently stopped.
+            break;
+        default:
+            console.warn("Teleview: Unknown renderer event", {id: model.id, event_type: t});
     }
-}
-
-actions.update = (type, update) => {
-    model.present({
-        is_update: true,
-        type: type,
-        update: update
-    });
-}
-
-actions.reset = () => {
-    model.present({is_reset: true});
 }
 
 actions.requestCurrentFrame = () => {
     model.present({ is_request_current_frame: true });
 }
 
+/*
 actions.stop = (reason) => {
     model.present({is_stop: true, reason: reason})
 }
-
-actions.still_watching = () => {
-    model.present({is_still_watching: true});
-}
-
-actions.start = (args) => {
-    model.present( {is_start: true, arg: args[0], is_subscribe: true } );
-}
-
-actions.handleEnsureStatus = (m, _a) => {
-    if(m.payload && m.payload.status === "ok") {
-        model.present({
-            is_ensure_server_status: true,
-            arg: m.payload.result
-        });
-    } else {
-        model.present({
-            is_ensure_server_status_error: true,
-            arg: m.payload
-        });
-    }
-   }
-
-actions.errorEnsureStatus = (m, _a) => {
-    model.present({
-        is_ensure_server_status_error: true,
-        arg: m.payload
-    });
-}
+*/
 
 actions.lifecycleEvent = (m, _a) => {
     model.present({
@@ -440,16 +405,6 @@ actions.currentFrameResponse = (m) => {
 
 actions.currentFrameRequestError = (_m) => {
     model.present({is_current_frame_request_error: true});
-}
-
-actions.rendererDown = (reason) => {
-    // The renderer is down, due to an error, or shutdown. It will be restarted
-    // in case of an error.
-    model.present({is_renderer_down: true, reason: reason});
-}
-
-actions.rendererStopped = function() {
-    // [TODO] The renderer is permanently stopped.
 }
 
 /**
@@ -495,7 +450,6 @@ function applyPatch(source, update) {
 
     return array;
 }
-
 
 /**
  * Worker startup

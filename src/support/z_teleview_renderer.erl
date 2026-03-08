@@ -230,7 +230,7 @@ last_render_cast_args(Args) ->
 % Render the template with the supplied vars and send the result to the differ.
 render(Args, #state{template=Template, args=RenderArgs, context=Context}) ->
     Args1 = merge_args(RenderArgs, Args),
-    {IOList, _Context} = z_template:render_to_iolist(Template, Args1, Context),
+    {IOList, _RenderContext} = z_template:render_to_iolist(Template, Args1, Context),
     z_convert:to_binary(IOList).
 
 %% Merge arguments used for rendering. 

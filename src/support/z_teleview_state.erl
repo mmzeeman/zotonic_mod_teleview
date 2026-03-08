@@ -227,6 +227,10 @@ handle_call({post, Path, Msg, CallContext}, _From, State) ->
         undefined ->
             {reply, ok, State};
         {ok, Args1} ->
+
+            ?DEBUG(maps:get(topics, State#state.args)),
+            ?DEBUG(maps:get(topics, Args1)),
+
             State1 = State#state{ args = Args1 },
             handle_render(#{ state_update => true }, State1),
             {reply, ok, State1}
@@ -291,6 +295,7 @@ code_change(_OldVsn, State, _Extra) ->
 %% Helpers
 %%
 
+
 handle_render(Msg, State) ->
     %% Trigger a render on all renderers.
     Args1 = case z_notifier:first(#teleview_render{ id = State#state.id,
@@ -316,7 +321,7 @@ state_context(Args, Context) ->
 
 subscribe([], _Context) ->
     ok;
-subscribe([Topic|Rest], Context) ->
+subscribe([Topic | Rest], Context) ->
     %% Subscribe to event topic.
     case z_mqtt:subscribe(Topic, Context) of
         ok ->
