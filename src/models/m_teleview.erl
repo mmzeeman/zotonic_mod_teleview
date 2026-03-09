@@ -92,6 +92,19 @@ m_get([Teleview, <<"current_frame">>, Renderer | Rest], #{ }, Context) ->
             {error, eaccess}
     end;
 
+m_get([Teleview, <<"tick">> | Rest], #{ }, Context) ->
+    TeleviewId = z_convert:to_integer(Teleview),
+    case z_teleview_acl:is_post_allowed(TeleviewId, Context) of
+        true ->
+            case z_teleview_state:get_tick(TeleviewId, Context) of
+                {ok, Tick} ->
+                    {ok, {Tick, Rest}};
+                {error, _} = Error ->
+                    Error
+            end;
+        false ->
+            {error, eaccess}
+    end;
 
 m_get(V, _Msg, _Context) ->
     ?LOG_INFO("Unknown ~p lookup: ~p", [?MODULE, V]),
@@ -100,19 +113,34 @@ m_get(V, _Msg, _Context) ->
 %%
 %% Model Posts
 %%
-%%
 
 m_post([Teleview, <<"still_watching">>, Renderer], _Msg, Context) ->
     TeleviewId = z_convert:to_integer(Teleview),
     RendererId = z_convert:to_integer(Renderer),
-
     case z_teleview_acl:is_view_allowed(TeleviewId, RendererId, Context) of
         true ->
             z_teleview_renderer:keep_alive(TeleviewId, RendererId, Context);
         false ->
             {error, eaccess}
     end;
-
+m_post([Teleview, <<"tick">> | Path], #{ payload := Payload }, Context) ->
+    TeleviewId = z_convert:to_integer(Teleview),
+    case z_teleview_acl:is_post_allowed(TeleviewId, Context) of
+        true ->
+            TickValue = get_tick_value(Path, Payload, Context),
+            z_teleview_state:update_tick(TeleviewId, TickValue, Context);
+        false ->
+            {error, eaccess}
+    end;
+m_post([Teleview, <<"topics">> | Path], #{ payload := Payload }, Context) ->
+    TeleviewId = z_convert:to_integer(Teleview),
+    case z_teleview_acl:is_post_allowed(TeleviewId, Context) of
+        true ->
+            Topics = get_topics(Path, Payload, Context),
+            z_teleview_state:update_topics(TeleviewId, Topics, Context);
+        false ->
+            {error, eaccess}
+    end;
 m_post([Teleview, <<"state">> | Path], Msg, Context) ->
     TeleviewId = z_convert:to_integer(Teleview),
     case z_teleview_acl:is_post_allowed(TeleviewId, Context) of
@@ -121,7 +149,6 @@ m_post([Teleview, <<"state">> | Path], Msg, Context) ->
         false ->
             {error, eaccess}
     end;
-
 m_post(V, _Msg, _Context) ->
     ?LOG_INFO("Unknown ~p post: ~p", [?MODULE, V]),
     {error, unknown_path}.
@@ -137,4 +164,43 @@ publish_event(Event, TeleviewId, RendererId, Msg, Context) ->
 -spec publish_event(binary(), binary(), integer(), integer(), term(), z:context()) -> ok | {error, term()}.
 publish_event(Event, SubEvent, TeleviewId, RendererId, Msg, Context) ->
     z_mqtt:publish([<<"model">>, <<"teleview">>, <<"event">>, TeleviewId, Event, RendererId, SubEvent], Msg, z_acl:sudo(Context)).
+
+%%
+%% Helpers
+%%
+
+get_tick_value(Path, Payload, Context) ->
+    Value = case Path of 
+                [V] ->
+                    %% The path is the value.
+                    V;
+                _ when is_map(Payload) ->
+                    %% Take the value from the payload, either as a payload value, a data attribute or a context value
+                    get_q(<<"tick">>, Payload, Context);
+                _ ->
+                    %% The payload is the value itself
+                    Payload
+            end,
+    to_undefined_or_integer(Value).
+
+get_topics(Path, Payload, Context) ->
+    ?DEBUG(Path),
+    ?DEBUG(Payload),
+    [].
+
+get_q(Name, Payload, Context) ->
+    case maps:get(Name, Payload, undefined) of
+        undefined ->
+            case maps:get(<<"data-", Name/binary>>, maps:get(<<"message">>, Payload, #{}), undefined) of
+                undefined ->
+                    z_context:get_q(Name, Context);
+                Value ->
+                    Value
+            end;
+        Value ->
+            Value
+    end.
+
+to_undefined_or_integer(<<"undefined">>) -> undefined;
+to_undefined_or_integer(Value) -> z_convert:to_integer(Value).
 
