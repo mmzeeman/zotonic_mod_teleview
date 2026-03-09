@@ -42,8 +42,7 @@
     is_already_started/3,
     keep_alive/3,
 
-    render/3, render/4,
-    sync_render/3, sync_render/4
+    render/3, render/4
 ]).
 
 % gen_server callbacks
@@ -100,12 +99,6 @@ render(Pid, Args, _Context) when is_pid(Pid) ->
 render(TeleviewId, RendererId, Args, Context) ->
     gen_server:cast({via, z_proc, {{?MODULE, TeleviewId, RendererId}, Context}}, {render, Args}).
 
-% Do a render and wait until the render is finished.
-sync_render(Pid, Args, _Context) ->
-    gen_server:call(Pid, {render, Args}).
-sync_render(TeleviewId, RendererId, Args, Context) ->
-    gen_server:call({via, z_proc, {{?MODULE, TeleviewId, RendererId}, Context}}, {render, Args}).
-
 %%
 %% gen_server callbacks
 %%
@@ -122,25 +115,22 @@ init([TeleviewId, RendererId, #{ template := Template }=Args, Context]) ->
 
     trigger_check(),
 
-    InitialState = #state{
-                      sts=erlang:system_time(millisecond),
-                      teleview_id=TeleviewId,
-                      renderer_id=RendererId,
-                      template=Template,
-                      args=Args1,
-                      min_time=maps:get(keyframe_min_time, Args, ?DEFAULT_MIN_TIME),
-                      max_time=maps:get(keyframe_max_time, Args, ?DEFAULT_MAX_TIME),
-                      last_check=z_utils:now(),
-                      context=Context},
+    State = #state{
+               sts=erlang:system_time(millisecond),
+               teleview_id=TeleviewId,
+               renderer_id=RendererId,
+               template=Template,
+               args=Args1,
+               min_time=maps:get(keyframe_min_time, Args, ?DEFAULT_MIN_TIME),
+               max_time=maps:get(keyframe_max_time, Args, ?DEFAULT_MAX_TIME),
+               last_check=z_utils:now(),
+               context=Context},
 
-    %% Immediately do an initial render.
-    State = render_and_broadcast_patch(Args1, InitialState),
+    %% Immediately trigger a render.
+    gen_server:cast(self(), {render, Args1}),
 
     {ok, State}.
 
-handle_call({render, Args}, _From, State) ->
-    State1 = render_and_broadcast_patch(Args, State),
-    {reply, ok, State1};
 handle_call(Msg, _From, State) ->
     {stop, {unknown_call, Msg}, State}.
 

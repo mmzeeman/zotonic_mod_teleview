@@ -218,7 +218,6 @@ init([Id, Supervisor, #{ topics := Topics }=Args, Context]) ->
 
     ok = manage_subscriptions([], Topics, Context),
     {TickValue, TickRef} = setup_tick(Args),
-
     trigger_check(),
         
     {ok, #state{id=Id, tick=TickValue, tick_ref=TickRef, teleview_supervisor=Supervisor, args=Args, context=Context}}.
@@ -268,8 +267,8 @@ handle_call({update_tick, Tick}, _From, #state{ tick = CurrentTick, tick_ref = R
                  true ->
                      State1;
                  false ->
-                     {noreply, S} = handle_render(#{ state_update => true }, State1),
-                     S
+                     {noreply, RenderState} = handle_render(#{ state_update => true }, State1),
+                     RenderState
              end,
     {reply, ok, State2};
 handle_call({update_topics, Topics}, _From, State) ->
