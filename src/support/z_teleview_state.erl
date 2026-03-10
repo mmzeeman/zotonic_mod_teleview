@@ -101,7 +101,7 @@ get_tick(TeleviewId, Context) ->
     gen_server:call({via, z_proc, {{?MODULE, TeleviewId}, Context}}, get_tick).
 
 % @doc Send model post to the teleview state process.
--spec update_tick(mod_teleview:id(), undefined | non_neg_integer(), z:context()) -> {ok, term()} | ok | {error, term()}.
+-spec update_tick(mod_teleview:id(), undefined | pos_integer(), z:context()) -> {ok, term()} | ok | {error, term()}.
 update_tick(TeleviewId, Tick, Context) ->
     gen_server:call({via, z_proc, {{?MODULE, TeleviewId}, Context}}, {update_tick, Tick}).
 
