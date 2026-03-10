@@ -134,8 +134,10 @@ m_post([Teleview, <<"tick">> | Path], #{ payload := Payload }, Context) ->
     TeleviewId = z_convert:to_integer(Teleview),
     case z_teleview_acl:is_post_allowed(TeleviewId, Context) of
         true ->
-            TickValue = get_tick_value(Path, Payload, Context),
-            z_teleview_state:update_tick(TeleviewId, TickValue, Context);
+            case get_tick_value(Path, Payload, Context) of
+                TickValue when TickValue == undefined orelse TickValue > 0 ->
+                    z_teleview_state:update_tick(TeleviewId, TickValue, Context)
+            end;
         false ->
             {error, eacces}
     end;
