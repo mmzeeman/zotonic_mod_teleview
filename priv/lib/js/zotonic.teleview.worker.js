@@ -202,7 +202,7 @@ model.handleCurrentFrameUpdate = (update) => {
 
             // Just in case... resubscribe to the topic. The server could have forgotton
             // the subscription because the session expired, or the server restarted.
-            self.unsubscribe([ televiewEventTopic(modell), rendererEventTopic(model) ], undefined, actions.subscribe);
+            self.unsubscribe([ televiewEventTopic(model), rendererEventTopic(model) ], undefined, actions.subscribe);
         }
 
         model.current_frame = toUTF8(update.current_frame);
