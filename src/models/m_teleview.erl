@@ -1,8 +1,8 @@
 %% @author Maas-Maarten Zeeman <mmzeeman@xs4all.nl>
-%% @copyright 2019-2024 Maas-Maarten Zeeman
+%% @copyright 2019-2026 Maas-Maarten Zeeman
 %% @doc Teleview model.
 
-%% Copyright 2019-2024 Maas-Maarten Zeeman
+%% Copyright 2019-2026 Maas-Maarten Zeeman
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -30,8 +30,8 @@
 ]).
 
 -export([
-    publish_event/5,
-    publish_event/6
+    publish_event/4,
+    publish_event/5
 ]).
 
 %%
@@ -39,13 +39,13 @@
 %%
 %% model/teleview/get/<teleview-id>/state/<renderer-id> : Get the state of the renderer, ensures that it is running.
 %%
-%% model/teleview/post/<teleview-id>/still-watching/<renderer-id>      : Indicate that the viewer is still watching.
+%% model/teleview/post/<teleview-id>/ping/<renderer-id> : Indicate that the viewer is still watching.
 %%
-%% model/teleview/event/<teleview-id>/reset/<renderer-id>              : The viewer must be reset. Wait for new keyframe.
-%% model/teleview/event/<teleview-id>/still-watching/<renderer-id>     : Reply to keep renderer alive
-%% model/teleview/event/<teleview-id>/update/<renderer-id>/keyframe    : A keyframe update, update the entire view.
-%% model/teleview/event/<teleview-id>/update/<renderer-id>/cumulative  : Patch against the last keyframe and update view.
-%% model/teleview/event/<teleview-id>/update/<renderer-id>/incremental : Patch against the current frame and update view.
+%% model/teleview/event/<teleview-id>/reset/<renderer-id> : The viewer must be reset. Wait for new keyframe.
+%% model/teleview/event/<teleview-id>/ping/<renderer-id>  : Reply to keep renderer alive
+%% model/teleview/event/<teleview-id>/ke/<renderer-id>    : A keyframe update, update the entire view.
+%% model/teleview/event/<teleview-id>/cu/<renderer-id>    : Cumulative patch against the last keyframe and update view.
+%% model/teleview/event/<teleview-id>/in/<renderer-id>    : Incremental patch against the current frame and update view.
 %%
 
 %%
@@ -114,7 +114,7 @@ m_get(V, _Msg, _Context) ->
 %% Model Posts
 %%
 
-m_post([Teleview, <<"still_watching">>, Renderer], _Msg, Context) ->
+m_post([Teleview, <<"ping">>, Renderer], _Msg, Context) ->
     TeleviewId = z_convert:to_integer(Teleview),
     RendererId = z_convert:to_integer(Renderer),
     case z_teleview_acl:is_view_allowed(TeleviewId, RendererId, Context) of
@@ -161,9 +161,9 @@ m_post(V, _Msg, _Context) ->
 publish_event(Event, TeleviewId, RendererId, Msg, Context) ->
     z_mqtt:publish([<<"model">>, <<"teleview">>, <<"event">>, TeleviewId, Event, RendererId], Msg, z_acl:sudo(Context)).
 
--spec publish_event(binary(), binary(), integer(), integer(), term(), z:context()) -> ok | {error, term()}.
-publish_event(Event, SubEvent, TeleviewId, RendererId, Msg, Context) ->
-    z_mqtt:publish([<<"model">>, <<"teleview">>, <<"event">>, TeleviewId, Event, RendererId, SubEvent], Msg, z_acl:sudo(Context)).
+-spec publish_event(binary(), integer(), term(), z:context()) -> ok | {error, term()}.
+publish_event(Event, TeleviewId, Msg, Context) ->
+    z_mqtt:publish([<<"model">>, <<"teleview">>, <<"event">>, TeleviewId, Event], Msg, z_acl:sudo(Context)).
 
 %%
 %% Helpers

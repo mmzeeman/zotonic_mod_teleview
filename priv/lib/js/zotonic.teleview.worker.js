@@ -72,11 +72,13 @@ model.present = (proposal) => {
         model.pickle = arg.pickle;
 
         self.publish(cotonic.mqtt.fill("model/ui/insert/+id", model), { inner: true, priority: 10 });
+
         self.subscribe("model/lifecycle/event/state", actions.lifecycleEvent);
         self.publish(cotonic.mqtt.fill("model/televiewClient/+televiewId/event/started", model), true);
     }
 
     if(proposal.is_subscribe) {
+        self.subscribe(televiewEventTopic(model), actions.televiewEvent);
         self.subscribe(rendererEventTopic(model), actions.rendererEvent);
     }
 
@@ -109,17 +111,11 @@ model.present = (proposal) => {
         }
     }
 
-    if(proposal.is_still_watching && model.updateTopic && state.isPageVisible(model)) {
+    if(proposal.is_ping && model.updateTopic && state.isPageVisible(model)) {
         self.publish(
-            cotonic.mqtt.fill("bridge/origin/model/teleview/post/+teleview_id/still_watching/+renderer_id", model),
+            cotonic.mqtt.fill("bridge/origin/model/teleview/post/+teleview_id/ping/+renderer_id", model),
             {});
     }
-
-    /*
-    if(proposal.is_stop && model.updateTopic) {
-        self.publish(cotonic.mqtt.fill("model/televiewClient/+televiewId/event/stopped", model), true);
-    }
-    */
 
     if(proposal.is_lifecycle_event) {
         if(model.page_state === "passive" && proposal.state === "hidden") {
@@ -138,7 +134,7 @@ model.present = (proposal) => {
 
             // Keep the teleview alive, we moved from hidden to passive.
             self.publish(
-                cotonic.mqtt.fill("bridge/origin/model/teleview/post/+teleview_id/still_watching/+renderer_id", model),
+                cotonic.mqtt.fill("bridge/origin/model/teleview/post/+teleview_id/ping/+renderer_id", model),
                 {});
         }
 
@@ -151,9 +147,9 @@ model.present = (proposal) => {
         model.request_error_count += 1;
     }
 
-    if(proposal.is_renderer_down) {
-        // [TODO]: Needs to be handled.. But not sure how.
-        console.warn("Teleview: Renderer down", {id: model.id, reason: proposal.reason});
+    if((proposal.is_renderer_down || proposal.is_teleview_down) && ((model.page_state === "passive") || (model.page_state === "active"))) {
+        // The view is visible, try to restart the it by requesting the current frame
+        setTimeout(actions.requestCurrentFrame, 0);
     }
 
     state.render(model);
@@ -191,7 +187,7 @@ model.handleCurrentFrameUpdate = (update) => {
 
             // Just in case... resubscribe to the topic. The server could have forgotton
             // the subscription because the session expired, or the server restarted.
-            self.unsubscribe(rendererEventTopic(model), actions.renderEvent, actions.subscribe);
+            self.unsubscribe([ televiewEventTopic(modell), rendererEventTopic(model) ], undefined, actions.subscribe);
         }
 
         model.current_frame = toUTF8(update.current_frame);
@@ -345,37 +341,47 @@ actions.start = (args) => {
     model.present( {is_start: true, arg: args[0], is_subscribe: true } );
 }
 
-actions.rendererEvent = (m, a) => {
+actions.televiewEvent = (m, a) => {
     switch(a.evt_type) {
-        case "update":
-            model.present({ is_update: true, type: a.args[0], update: m.payload });
-            break;
-        case "reset":
-            model.present({is_reset: true});
-            break;
-        case "still_watching":
-            model.present({is_still_watching: true});
+        case "start":
+            console.warn("Teleview: start", m, model);
             break;
         case "down":
-            model.present({is_renderer_down: true, reason: m.payload.reason});
-            break;
-        case "stopped":
-            // [TODO] The renderer is permanently stopped.
+            model.present({is_teleview_down: true, reason: m.payload.reason});
             break;
         default:
-            console.warn("Teleview: Unknown renderer event", {id: model.id, event_type: t});
+            console.warn("Teleview: Unknown teleview event", {id: model.id, event_type: t});
+    }
+}
+
+actions.rendererEvent = (m, a) => {
+    switch(a.evt_type) {
+        case "start":
+            model.present({ is_reset: true });
+            break;
+        case "ke":
+            model.present({ is_update: true, type: "keyframe", update: m.payload });
+            break;
+        case "cu":
+            model.present({ is_update: true, type: "cumulative", update: m.payload });
+            break;
+        case "in":
+            model.present({ is_update: true, type: "incremental", update: m.payload });
+            break;
+        case "ping":
+            model.present({ is_ping: true });
+            break;
+        case "down":
+            model.present({ is_renderer_down: true, reason: m.payload.reason });
+            break;
+        default:
+            console.warn("Teleview: Unknown renderer event", {id: model.id, event_type: a.evt_type});
     }
 }
 
 actions.requestCurrentFrame = () => {
     model.present({ is_request_current_frame: true });
 }
-
-/*
-actions.stop = (reason) => {
-    model.present({is_stop: true, reason: reason})
-}
-*/
 
 actions.lifecycleEvent = (m, _a) => {
     model.present({
@@ -414,8 +420,12 @@ actions.currentFrameRequestError = (_m) => {
 const toUTF8 = (() => { const e = new TextEncoder(); return e.encode.bind(e); })();
 const fromUTF8 = (() => { const d = new TextDecoder(); return d.decode.bind(d); })();
 
+function televiewEventTopic(model) {
+    return `bridge/origin/model/teleview/event/${ model.teleview_id }/+evt_type`;
+}
+
 function rendererEventTopic(model) {
-    return `bridge/origin/model/teleview/event/${ model.teleview_id }/+evt_type/${ model.renderer_id }/#args`;
+    return `bridge/origin/model/teleview/event/${ model.teleview_id }/+evt_type/${ model.renderer_id }`;
 }
 
 function applyPatch(source, update) {
@@ -425,6 +435,7 @@ function applyPatch(source, update) {
     const buffer = new ArrayBuffer(update.result_size);
     const array = new Uint8Array(buffer);
     const src = source;
+    const COPY = 67, SKIP = 83, INSERT = 73; 
 
     let src_idx = 0;
     let dst_idx = 0;
@@ -433,13 +444,13 @@ function applyPatch(source, update) {
         const patch = update.patch[i];
         const v = update.patch[i+1];
 
-        if(patch === "c") {
+        if(patch == COPY) {
             array.set(src.subarray(src_idx, src_idx+v), dst_idx);
             src_idx += v;
             dst_idx += v;
-        } else if(patch === "s") {
+        } else if(patch == SKIP) {
             src_idx += v;
-        } else if(patch === "i") {
+        } else if(patch == INSERT) {
             const data = toUTF8(v);
             array.set(data, dst_idx);
             dst_idx += data.length;

@@ -219,6 +219,8 @@ init([Id, Supervisor, #{ topics := Topics }=Args, Context]) ->
     ok = manage_subscriptions([], Topics, Context),
     {TickValue, TickRef} = setup_tick(Args),
     trigger_check(),
+    
+    m_teleview:publish_event(<<"start">>, Id, #{ }, Context),
         
     {ok, #state{id=Id, tick=TickValue, tick_ref=TickRef, teleview_supervisor=Supervisor, args=Args, context=Context}}.
 
@@ -324,7 +326,8 @@ handle_info({mqtt_msg, Msg}, State) ->
 handle_info(_Info, State) ->
     {noreply, State}.
 
-terminate(_Reason, _State) ->
+terminate(Reason, State) ->
+    m_teleview:publish_event(<<"down">>, State#state.id, #{ reason => Reason }, State#state.context),
     ok.
 
 code_change(_OldVsn, State, _Extra) ->
@@ -333,7 +336,6 @@ code_change(_OldVsn, State, _Extra) ->
 %%
 %% Helpers
 %%
-
 
 handle_render(Msg, State) ->
     %% Trigger a render on all renderers.

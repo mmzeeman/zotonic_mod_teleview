@@ -109,7 +109,7 @@ init([TeleviewId, RendererId, #{ template := Template }=Args, Context]) ->
     z_context:logger_md(Context),
 
     % When we restarted because of an error, the viewers should be reset.
-    m_teleview:publish_event(<<"reset">>, TeleviewId, RendererId, #{}, Context),
+    m_teleview:publish_event(<<"start">>, TeleviewId, RendererId, #{}, Context),
 
     Args1 = Args#{teleview_id => TeleviewId, renderer_id => RendererId},
 
@@ -153,7 +153,7 @@ handle_info(check, #state{last_check=LastCheck}=State) ->
             %% Be silent...
             {noreply, State};
         Now when Now < (LastCheck + ?RENDERER_EXPIRE_TIME) ->
-            m_teleview:publish_event(<<"still_watching">>, State#state.teleview_id, State#state.renderer_id, #{}, State#state.context),
+            m_teleview:publish_event(<<"ping">>, State#state.teleview_id, State#state.renderer_id, #{}, State#state.context),
             {noreply, State};
         _ ->
             {stop, normal, State}
@@ -196,15 +196,17 @@ renderer_context(Args, Context) ->
 
 %%
 broadcast_patch({keyframe, Msg}, #state{teleview_id=TeleviewId, renderer_id=RendererId, context=Context}) ->
-    z_mqtt:publish([<<"model">>, <<"teleview">>, <<"event">>, TeleviewId, <<"update">>, RendererId, <<"keyframe">>],
+    %?DEBUG(maps:keys(Msg)),
+    z_mqtt:publish([<<"model">>, <<"teleview">>, <<"event">>, TeleviewId, <<"ke">>, RendererId],
                    Msg, #{ qos => 1, retain => true },  z_acl:sudo(Context));
 
 broadcast_patch({incremental, Msg}, #state{teleview_id=TeleviewId, renderer_id=RendererId, context=Context}) ->
-    z_mqtt:publish([<<"model">>, <<"teleview">>, <<"event">>, TeleviewId, <<"update">>, RendererId, <<"incremental">>],
+    %?DEBUG(maps:keys(Msg)),
+    z_mqtt:publish([<<"model">>, <<"teleview">>, <<"event">>, TeleviewId, <<"in">>, RendererId],
                    Msg, #{ qos => 1 }, z_acl:sudo(Context));
 
 broadcast_patch({cumulative, Msg}, #state{teleview_id=TeleviewId, renderer_id=RendererId, context=Context}) ->
-    z_mqtt:publish([<<"model">>, <<"teleview">>, <<"event">>, TeleviewId, <<"update">>, RendererId, <<"cumulative">>],
+    z_mqtt:publish([<<"model">>, <<"teleview">>, <<"event">>, TeleviewId, <<"cu">>, RendererId],
                    Msg, z_acl:sudo(Context)).
 
 %% When there are more render casts in the mailbox, skip them, and
@@ -378,14 +380,10 @@ current_time() ->
 patch_to_list(Patch) ->
     patch_to_list(Patch, []).
     
-patch_to_list([], Acc) ->
-    lists:reverse(Acc);
-patch_to_list([{copy, N} | Rest], Acc) ->
-    patch_to_list(Rest, [N, c | Acc]);
-patch_to_list([{skip, N} | Rest], Acc) ->
-    patch_to_list(Rest, [N, s | Acc]);
-patch_to_list([{insert, Bin} | Rest], Acc) ->
-    patch_to_list(Rest, [Bin, i | Acc]).
+patch_to_list([], Acc) -> lists:reverse(Acc);
+patch_to_list([{copy, N} | Rest], Acc) -> patch_to_list(Rest, [N, $C | Acc]);
+patch_to_list([{skip, N} | Rest], Acc) -> patch_to_list(Rest, [N, $S | Acc]);
+patch_to_list([{insert, Bin} | Rest], Acc) -> patch_to_list(Rest, [Bin, $I | Acc]).
 
 trigger_check() ->
     erlang:send_after(?INTERVAL_MSEC, self(), check).
