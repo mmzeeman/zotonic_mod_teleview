@@ -190,10 +190,10 @@ get_tick_value(Path, Payload, Context) ->
             end,
     to_undefined_or_integer(Value).
 
-get_topics(Path, Payload, Context) ->
-    ?DEBUG(Path),
-    ?DEBUG(Payload),
-    [].
+%%get_topics(Path, Payload, Context) ->
+%%    ?DEBUG(Path),
+%%    ?DEBUG(Payload),
+%%    [].
 
 get_q(Name, Payload, Context) ->
     case maps:get(Name, Payload, undefined) of
