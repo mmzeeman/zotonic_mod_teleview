@@ -196,12 +196,10 @@ renderer_context(Args, Context) ->
 
 %%
 broadcast_patch({keyframe, Msg}, #state{teleview_id=TeleviewId, renderer_id=RendererId, context=Context}) ->
-    %?DEBUG(maps:keys(Msg)),
     z_mqtt:publish([<<"model">>, <<"teleview">>, <<"event">>, TeleviewId, <<"ke">>, RendererId],
                    Msg, #{ qos => 1, retain => true },  z_acl:sudo(Context));
 
 broadcast_patch({incremental, Msg}, #state{teleview_id=TeleviewId, renderer_id=RendererId, context=Context}) ->
-    %?DEBUG(maps:keys(Msg)),
     z_mqtt:publish([<<"model">>, <<"teleview">>, <<"event">>, TeleviewId, <<"in">>, RendererId],
                    Msg, #{ qos => 1 }, z_acl:sudo(Context));
 
