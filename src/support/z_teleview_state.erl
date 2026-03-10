@@ -384,7 +384,7 @@ unsubscribe([Topic | Rest], Context) ->
             unsubscribe(Rest, Context);
         {error, _}=Error ->
             % log warning
-            z:warning("Teleview could not unsubscribe to topic: ~p, reason: ~p",
+            z:warning("Teleview could not unsubscribe from topic: ~p, reason: ~p",
                       [Topic, Error],
                       [{module, ?MODULE}, {line, ?LINE}],
                       Context),
