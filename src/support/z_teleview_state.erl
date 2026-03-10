@@ -35,7 +35,6 @@
 
     post/4,
     update_tick/3,
-    update_topics/3,
 
     store_keyframe/6,
     get_keyframe/3, 
@@ -105,17 +104,10 @@ get_tick(TeleviewId, Context) ->
 update_tick(TeleviewId, Tick, Context) ->
     gen_server:call({via, z_proc, {{?MODULE, TeleviewId}, Context}}, {update_tick, Tick}).
 
-% @doc Send model post to the teleview state process.
--spec update_topics(mod_teleview:id(), list(), z:context()) -> {ok, term()} | ok | {error, term()}.
-update_topics(_TeleviewId, _Topics, _Context) ->
-    ok.
-
-
 % @doc Return true when the renderer is already started.
 -spec is_renderer_already_started(mod_teleview:id(), mod_teleview:id(), z:context()) -> boolean().
 is_renderer_already_started(TeleviewId, RendererId, Context) ->
     z_teleview_renderer:is_already_started(TeleviewId, RendererId, Context).
-
 
 %%
 %% Teleview Ets State. This table is shared by all televiews. It contains the frames
@@ -129,10 +121,8 @@ init_table(Context) ->
                     {write_concurrency, true},
                     {read_concurrency, true}]).
 
-
 table_name(Context) ->
     z_utils:name_for_site(?MODULE, Context).
-
 
 % @doc Store the current frame of a renderer.
 store_current_frame(SpawnTimestamp, TeleviewId, RendererId, Frame, Sn, Context) ->
@@ -273,10 +263,6 @@ handle_call({update_tick, Tick}, _From, #state{ tick = CurrentTick, tick_ref = R
                      RenderState
              end,
     {reply, ok, State2};
-handle_call({update_topics, Topics}, _From, State) ->
-    %% TODO
-    ?DEBUG(Topics),
-    {reply, ok, State};
 handle_call(Msg, _From, State) ->
     {stop, {unknown_call, Msg}, State}.
 
