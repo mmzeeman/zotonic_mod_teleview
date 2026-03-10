@@ -1,8 +1,8 @@
 %% @author Maas-Maarten Zeeman <mmzeeman@xs4all.nl>
-%% @copyright 2019-2024 Maas-Maarten Zeeman
+%% @copyright 2019-2026 Maas-Maarten Zeeman
 %% @doc Teleview model.
 
-%% Copyright 2019-2024 Maas-Maarten Zeeman
+%% Copyright 2019-2026 Maas-Maarten Zeeman
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -30,8 +30,8 @@
 ]).
 
 -export([
-    publish_event/5,
-    publish_event/6
+    publish_event/4,
+    publish_event/5
 ]).
 
 %%
@@ -39,13 +39,14 @@
 %%
 %% model/teleview/get/<teleview-id>/state/<renderer-id> : Get the state of the renderer, ensures that it is running.
 %%
-%% model/teleview/post/<teleview-id>/still-watching/<renderer-id>      : Indicate that the viewer is still watching.
+%% model/teleview/post/<teleview-id>/ping/<renderer-id> : Indicate that a viewer is still watching.
 %%
-%% model/teleview/event/<teleview-id>/reset/<renderer-id>              : The viewer must be reset. Wait for new keyframe.
-%% model/teleview/event/<teleview-id>/still-watching/<renderer-id>     : Reply to keep renderer alive
-%% model/teleview/event/<teleview-id>/update/<renderer-id>/keyframe    : A keyframe update, update the entire view.
-%% model/teleview/event/<teleview-id>/update/<renderer-id>/cumulative  : Patch against the last keyframe and update view.
-%% model/teleview/event/<teleview-id>/update/<renderer-id>/incremental : Patch against the current frame and update view.
+%% model/teleview/event/<teleview-id>/start/<renderer-id> : The viewer must be reset. Wait for new keyframe.
+%% model/teleview/event/<teleview-id>/down/<renderer-id>  : The server side renderer is down, the view may restart it. 
+%% model/teleview/event/<teleview-id>/ping/<renderer-id>  : Reply to keep renderer alive
+%% model/teleview/event/<teleview-id>/ke/<renderer-id>    : A keyframe update, update the entire view.
+%% model/teleview/event/<teleview-id>/cu/<renderer-id>    : Cumulative patch against the last keyframe and update view.
+%% model/teleview/event/<teleview-id>/in/<renderer-id>    : Incremental patch against the current frame and update view.
 %%
 
 %%
@@ -62,7 +63,7 @@ m_get([Teleview, <<"keyframe">>, Renderer | Rest], _Msg, Context) ->
             Frame = z_teleview_state:get_keyframe(TeleviewId, RendererId, Context),
             {ok, {Frame, Rest}};
         false ->
-            {error, eaccess}
+            {error, eacces}
     end;
 
 %% Request for the current frame
@@ -70,12 +71,18 @@ m_get([Teleview, <<"current_frame">>, Renderer | Rest], #{ payload := Payload },
     TeleviewId = z_convert:to_integer(Teleview),
     RendererId = z_convert:to_integer(Renderer),
 
-    case z_teleview_state:get_current_frame(TeleviewId, RendererId, Payload, Context) of
-        #{} = Frame -> 
-            {ok, {Frame, Rest}};
-        {error, _} = Error ->
-            Error
+    case z_teleview_acl:is_view_allowed(TeleviewId, RendererId, Context) of
+        true ->
+            case z_teleview_state:get_current_frame(TeleviewId, RendererId, Payload, Context) of
+                #{} = Frame -> 
+                    {ok, {Frame, Rest}};
+                {error, _} = Error ->
+                    Error
+            end;
+        false ->
+            {error, eacces}
     end;
+
 m_get([Teleview, <<"current_frame">>, Renderer | Rest], #{ }, Context) ->
     TeleviewId = z_convert:to_integer(Teleview),
     RendererId = z_convert:to_integer(Renderer),
@@ -89,9 +96,22 @@ m_get([Teleview, <<"current_frame">>, Renderer | Rest], #{ }, Context) ->
                     Error
             end;
         false ->
-            {error, eaccess}
+            {error, eacces}
     end;
 
+m_get([Teleview, <<"tick">> | Rest], #{ }, Context) ->
+    TeleviewId = z_convert:to_integer(Teleview),
+    case z_teleview_acl:is_post_allowed(TeleviewId, Context) of
+        true ->
+            case z_teleview_state:get_tick(TeleviewId, Context) of
+                {ok, Tick} ->
+                    {ok, {Tick, Rest}};
+                {error, _} = Error ->
+                    Error
+            end;
+        false ->
+            {error, eacces}
+    end;
 
 m_get(V, _Msg, _Context) ->
     ?LOG_INFO("Unknown ~p lookup: ~p", [?MODULE, V]),
@@ -100,28 +120,44 @@ m_get(V, _Msg, _Context) ->
 %%
 %% Model Posts
 %%
-%%
 
-m_post([Teleview, <<"still_watching">>, Renderer], _Msg, Context) ->
+m_post([Teleview, <<"ping">>, Renderer], _Msg, Context) ->
     TeleviewId = z_convert:to_integer(Teleview),
     RendererId = z_convert:to_integer(Renderer),
-
     case z_teleview_acl:is_view_allowed(TeleviewId, RendererId, Context) of
         true ->
             z_teleview_renderer:keep_alive(TeleviewId, RendererId, Context);
         false ->
-            {error, eaccess}
+            {error, eacces}
     end;
-
+m_post([Teleview, <<"tick">> | Path], #{ payload := Payload }, Context) ->
+    TeleviewId = z_convert:to_integer(Teleview),
+    case z_teleview_acl:is_post_allowed(TeleviewId, Context) of
+        true ->
+            case get_tick_value(Path, Payload, Context) of
+                TickValue when TickValue == undefined orelse TickValue > 0 ->
+                    z_teleview_state:update_tick(TeleviewId, TickValue, Context)
+            end;
+        false ->
+            {error, eacces}
+    end;
+%m_post([Teleview, <<"topics">> | Path], #{ payload := Payload }, Context) ->
+%    TeleviewId = z_convert:to_integer(Teleview),
+%    case z_teleview_acl:is_post_allowed(TeleviewId, Context) of
+%        true ->
+%            Topics = get_topics(Path, Payload, Context),
+%            z_teleview_state:update_topics(TeleviewId, Topics, Context);
+%        false ->
+%            {error, eacces}
+%    end;
 m_post([Teleview, <<"state">> | Path], Msg, Context) ->
     TeleviewId = z_convert:to_integer(Teleview),
     case z_teleview_acl:is_post_allowed(TeleviewId, Context) of
         true ->
             z_teleview_state:post(TeleviewId, Path, Msg, Context);
         false ->
-            {error, eaccess}
+            {error, eacces}
     end;
-
 m_post(V, _Msg, _Context) ->
     ?LOG_INFO("Unknown ~p post: ~p", [?MODULE, V]),
     {error, unknown_path}.
@@ -134,7 +170,46 @@ m_post(V, _Msg, _Context) ->
 publish_event(Event, TeleviewId, RendererId, Msg, Context) ->
     z_mqtt:publish([<<"model">>, <<"teleview">>, <<"event">>, TeleviewId, Event, RendererId], Msg, z_acl:sudo(Context)).
 
--spec publish_event(binary(), binary(), integer(), integer(), term(), z:context()) -> ok | {error, term()}.
-publish_event(Event, SubEvent, TeleviewId, RendererId, Msg, Context) ->
-    z_mqtt:publish([<<"model">>, <<"teleview">>, <<"event">>, TeleviewId, Event, RendererId, SubEvent], Msg, z_acl:sudo(Context)).
+-spec publish_event(binary(), integer(), term(), z:context()) -> ok | {error, term()}.
+publish_event(Event, TeleviewId, Msg, Context) ->
+    z_mqtt:publish([<<"model">>, <<"teleview">>, <<"event">>, TeleviewId, Event], Msg, z_acl:sudo(Context)).
+
+%%
+%% Helpers
+%%
+
+get_tick_value(Path, Payload, Context) ->
+    Value = case Path of 
+                [V] ->
+                    %% The path is the value.
+                    V;
+                _ when is_map(Payload) ->
+                    %% Take the value from the payload, either as a payload value, a data attribute or a context value
+                    get_q(<<"tick">>, Payload, Context);
+                _ ->
+                    %% The payload is the value itself
+                    Payload
+            end,
+    to_undefined_or_integer(Value).
+
+%%get_topics(Path, Payload, Context) ->
+%%    ?DEBUG(Path),
+%%    ?DEBUG(Payload),
+%%    [].
+
+get_q(Name, Payload, Context) ->
+    case maps:get(Name, Payload, undefined) of
+        undefined ->
+            case maps:get(<<"data-", Name/binary>>, maps:get(<<"message">>, Payload, #{}), undefined) of
+                undefined ->
+                    z_context:get_q(Name, Context);
+                Value ->
+                    Value
+            end;
+        Value ->
+            Value
+    end.
+
+to_undefined_or_integer(<<"undefined">>) -> undefined;
+to_undefined_or_integer(Value) -> z_convert:to_integer(Value).
 

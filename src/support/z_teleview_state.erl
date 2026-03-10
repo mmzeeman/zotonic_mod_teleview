@@ -1,8 +1,8 @@
 %% @author Maas-Maarten Zeeman <mmzeeman@xs4all.nl>
-%% @copyright 2019-2024 Maas-Maarten Zeeman
+%% @copyright 2019-2026 Maas-Maarten Zeeman
 %% @doc TeleView State.
 
-%% Copyright 2019-2024 Maas-Maarten Zeeman 
+%% Copyright 2019-2026 Maas-Maarten Zeeman 
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -31,8 +31,10 @@
     store_current_frame/6,
 
     get_current_frame/3, get_current_frame/4, get_current_frame/5,
+    get_tick/2,
 
     post/4,
+    update_tick/3,
 
     store_keyframe/6,
     get_keyframe/3, 
@@ -52,6 +54,9 @@
     id :: mod_teleview:id(),
 
     args :: term(),
+
+    tick :: undefined | pos_integer(),   %% tick timer value
+    tick_ref :: undefined | reference(), %% tick timer reference 
 
     teleview_supervisor = undefined,  %% The supervisor of the teleview
     renderers_supervisor = undefined, %% The supervisor of all renderers
@@ -89,12 +94,20 @@ post(TeleviewId, Path, Msg, Context) ->
     gen_server:call({via, z_proc, {{?MODULE, TeleviewId}, Context}},
                     {post, Path, Msg, z_context:prune_for_scomp(Context)}).
 
+% @doc Get the current tick interval of the teleview.
+-spec get_tick(mod_teleview:id(), z:context()) -> {ok, undefined | pos_integer()} | {error, term()}.
+get_tick(TeleviewId, Context) ->
+    gen_server:call({via, z_proc, {{?MODULE, TeleviewId}, Context}}, get_tick).
+
+% @doc Update or stop tick interval.
+-spec update_tick(mod_teleview:id(), undefined | pos_integer(), z:context()) -> {ok, term()} | ok | {error, term()}.
+update_tick(TeleviewId, Tick, Context) ->
+    gen_server:call({via, z_proc, {{?MODULE, TeleviewId}, Context}}, {update_tick, Tick}).
 
 % @doc Return true when the renderer is already started.
 -spec is_renderer_already_started(mod_teleview:id(), mod_teleview:id(), z:context()) -> boolean().
 is_renderer_already_started(TeleviewId, RendererId, Context) ->
     z_teleview_renderer:is_already_started(TeleviewId, RendererId, Context).
-
 
 %%
 %% Teleview Ets State. This table is shared by all televiews. It contains the frames
@@ -108,10 +121,8 @@ init_table(Context) ->
                     {write_concurrency, true},
                     {read_concurrency, true}]).
 
-
 table_name(Context) ->
     z_utils:name_for_site(?MODULE, Context).
-
 
 % @doc Store the current frame of a renderer.
 store_current_frame(SpawnTimestamp, TeleviewId, RendererId, Frame, Sn, Context) ->
@@ -195,12 +206,13 @@ init([Id, Supervisor, #{ topics := Topics }=Args, Context]) ->
 
     self() ! get_renderers_sup_pid,
 
-    ok = subscribe(Topics, Context),
-    ok = setup_tick(Args),
-
+    ok = manage_subscriptions([], Topics, Context),
+    {TickValue, TickRef} = setup_tick(Args),
     trigger_check(),
+    
+    m_teleview:publish_event(<<"start">>, Id, #{ }, Context),
         
-    {ok, #state{id=Id, teleview_supervisor=Supervisor, args=Args, context=Context}}.
+    {ok, #state{id=Id, tick=TickValue, tick_ref=TickRef, teleview_supervisor=Supervisor, args=Args, context=Context}}.
 
 handle_call({start_renderer, VaryArgs, Context}, _From,
             #state{renderers_supervisor=RenderersSup,
@@ -227,11 +239,30 @@ handle_call({post, Path, Msg, CallContext}, _From, State) ->
         undefined ->
             {reply, ok, State};
         {ok, Args1} ->
+            manage_subscriptions(maps:get(topics, State#state.args, []),
+                                 maps:get(topics, Args1, []), State#state.context),
             State1 = State#state{ args = Args1 },
-            handle_render(#{ state_update => true }, State1),
-            {reply, ok, State1}
+            {noreply, State2} = handle_render(#{ state_update => true }, State1),
+            {reply, ok, State2}
     end;
 
+handle_call(get_tick, _From, #state{ tick = Tick }=State) ->
+    {reply, {ok, Tick}, State};
+handle_call({update_tick, Tick}, _From, #state{ tick = CurrentTick, tick_ref = Ref }=State) when Tick == undefined orelse (is_integer(Tick) andalso Tick > 0) ->
+    case Ref of
+        undefined -> undefined;
+        Ref -> erlang:cancel_timer(Ref)
+    end,
+    NewRef = trigger_tick(Tick),
+    State1 = State#state{ tick = Tick, tick_ref = NewRef},
+    State2 = case Tick == CurrentTick of
+                 true ->
+                     State1;
+                 false ->
+                     {noreply, RenderState} = handle_render(#{ state_update => true }, State1),
+                     RenderState
+             end,
+    {reply, ok, State2};
 handle_call(Msg, _From, State) ->
     {stop, {unknown_call, Msg}, State}.
 
@@ -268,20 +299,21 @@ handle_info(get_renderers_sup_pid, State) ->
             {noreply, State#state{renderers_supervisor=Pid}}
     end; 
 
-handle_info({tick, Interval}, State) ->
-    try
-        handle_render(#{ tick => Interval }, State)
-    after
-        trigger_tick(Interval)
-    end;
-
+handle_info({tick, Interval}, #state{ tick = Tick }=State) ->
+    {noreply, State1} = handle_render(#{ tick => Interval }, State),
+    State2 = case Tick of
+                 undefined -> State1#state{ tick_ref = undefined };
+                 _ -> State1#state{ tick_ref = trigger_tick(Tick) }
+             end,
+    {noreply, State2};
 handle_info({mqtt_msg, Msg}, State) ->
     handle_render(Msg, State);
 
 handle_info(_Info, State) ->
     {noreply, State}.
 
-terminate(_Reason, _State) ->
+terminate(Reason, State) ->
+    m_teleview:publish_event(<<"down">>, State#state.id, #{ reason => Reason }, State#state.context),
     ok.
 
 code_change(_OldVsn, State, _Extra) ->
@@ -296,10 +328,16 @@ handle_render(Msg, State) ->
     Args1 = case z_notifier:first(#teleview_render{ id = State#state.id,
                                                     msg = Msg,
                                                     args = State#state.args}, State#state.context) of
-                undefined -> State#state.args;
-                NewArgs when is_map(NewArgs) -> NewArgs
+                undefined ->
+                    State#state.args;
+                NewArgs when is_map(NewArgs) ->
+                    manage_subscriptions(maps:get(topics, State#state.args, []),
+                                         maps:get(topics, NewArgs, []), State#state.context),
+                    NewArgs
             end,
-    trigger_render(supervisor:which_children(State#state.renderers_supervisor), Args1, State#state.context),
+    trigger_render(supervisor:which_children(State#state.renderers_supervisor),
+                   Args1,
+                   State#state.context),
     {noreply, State#state{args=Args1}}.
 
 state_context(Args, Context) ->
@@ -314,9 +352,14 @@ state_context(Args, Context) ->
             {Args1, Context1}
     end.
 
+manage_subscriptions(CurrentTopics, NewTopics, Context) ->
+    subscribe(NewTopics -- CurrentTopics, Context),
+    unsubscribe(CurrentTopics -- NewTopics, Context),
+    ok.
+
 subscribe([], _Context) ->
     ok;
-subscribe([Topic|Rest], Context) ->
+subscribe([Topic | Rest], Context) ->
     %% Subscribe to event topic.
     case z_mqtt:subscribe(Topic, Context) of
         ok ->
@@ -332,14 +375,34 @@ subscribe([Topic|Rest], Context) ->
             subscribe(Rest, Context)
     end.
 
-setup_tick(#{ tick := Tick }) ->
-    trigger_tick(Tick);
-setup_tick(#{ }) ->
-    ok.
+unsubscribe([], _Context) ->
+    ok;
+unsubscribe([Topic | Rest], Context) ->
+    %% Subscribe to event topic.
+    case z_mqtt:unsubscribe(Topic, Context) of
+        ok ->
+            unsubscribe(Rest, Context);
+        {error, _}=Error ->
+            % log warning
+            z:warning("Teleview could not unsubscribe from topic: ~p, reason: ~p",
+                      [Topic, Error],
+                      [{module, ?MODULE}, {line, ?LINE}],
+                      Context),
 
+            %% Keep on trying to subscribe to the other topics
+            unsubscribe(Rest, Context)
+    end.
+
+
+setup_tick(#{ tick := Tick }) ->
+    {Tick, trigger_tick(Tick)};
+setup_tick(#{ }) ->
+    {undefined, undefined}.
+
+trigger_tick(undefined) ->
+    undefined;
 trigger_tick(TickInterval) ->
-    _ = erlang:send_after(TickInterval, self(), {tick, TickInterval}),
-    ok.
+    erlang:send_after(TickInterval, self(), {tick, TickInterval}).
 
 trigger_check() ->
     erlang:send_after(?INTERVAL_MSEC, self(), check).

@@ -1,8 +1,8 @@
 %% @author Maas-Maarten Zeeman <mmzeeman@xs4all.nl>
-%% @copyright 2019-2024 Maas-Maarten Zeeman
+%% @copyright 2019-2026 Maas-Maarten Zeeman
 %% @doc TeleView Renderer.
 
-%% Copyright 2024 Maas-Maarten Zeeman 
+%% Copyright 2019-2026 Maas-Maarten Zeeman 
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -42,8 +42,7 @@
     is_already_started/3,
     keep_alive/3,
 
-    render/3, render/4,
-    sync_render/3, sync_render/4
+    render/3, render/4
 ]).
 
 % gen_server callbacks
@@ -100,12 +99,6 @@ render(Pid, Args, _Context) when is_pid(Pid) ->
 render(TeleviewId, RendererId, Args, Context) ->
     gen_server:cast({via, z_proc, {{?MODULE, TeleviewId, RendererId}, Context}}, {render, Args}).
 
-% Do a render and wait until the render is finished.
-sync_render(Pid, Args, _Context) ->
-    gen_server:call(Pid, {render, Args}).
-sync_render(TeleviewId, RendererId, Args, Context) ->
-    gen_server:call({via, z_proc, {{?MODULE, TeleviewId, RendererId}, Context}}, {render, Args}).
-
 %%
 %% gen_server callbacks
 %%
@@ -116,31 +109,28 @@ init([TeleviewId, RendererId, #{ template := Template }=Args, Context]) ->
     z_context:logger_md(Context),
 
     % When we restarted because of an error, the viewers should be reset.
-    m_teleview:publish_event(<<"reset">>, TeleviewId, RendererId, #{}, Context),
+    m_teleview:publish_event(<<"start">>, TeleviewId, RendererId, #{}, Context),
 
     Args1 = Args#{teleview_id => TeleviewId, renderer_id => RendererId},
 
     trigger_check(),
 
-    InitialState = #state{
-                      sts=erlang:system_time(millisecond),
-                      teleview_id=TeleviewId,
-                      renderer_id=RendererId,
-                      template=Template,
-                      args=Args1,
-                      min_time=maps:get(keyframe_min_time, Args, ?DEFAULT_MIN_TIME),
-                      max_time=maps:get(keyframe_max_time, Args, ?DEFAULT_MAX_TIME),
-                      last_check=z_utils:now(),
-                      context=Context},
+    State = #state{
+               sts=erlang:system_time(millisecond),
+               teleview_id=TeleviewId,
+               renderer_id=RendererId,
+               template=Template,
+               args=Args1,
+               min_time=maps:get(keyframe_min_time, Args, ?DEFAULT_MIN_TIME),
+               max_time=maps:get(keyframe_max_time, Args, ?DEFAULT_MAX_TIME),
+               last_check=z_utils:now(),
+               context=Context},
 
-    %% Immediately do an initial render.
-    State = render_and_broadcast_patch(Args1, InitialState),
+    %% Immediately trigger a render.
+    gen_server:cast(self(), {render, Args1}),
 
     {ok, State}.
 
-handle_call({render, Args}, _From, State) ->
-    State1 = render_and_broadcast_patch(Args, State),
-    {reply, ok, State1};
 handle_call(Msg, _From, State) ->
     {stop, {unknown_call, Msg}, State}.
 
@@ -163,7 +153,7 @@ handle_info(check, #state{last_check=LastCheck}=State) ->
             %% Be silent...
             {noreply, State};
         Now when Now < (LastCheck + ?RENDERER_EXPIRE_TIME) ->
-            m_teleview:publish_event(<<"still_watching">>, State#state.teleview_id, State#state.renderer_id, #{}, State#state.context),
+            m_teleview:publish_event(<<"ping">>, State#state.teleview_id, State#state.renderer_id, #{}, State#state.context),
             {noreply, State};
         _ ->
             {stop, normal, State}
@@ -206,15 +196,15 @@ renderer_context(Args, Context) ->
 
 %%
 broadcast_patch({keyframe, Msg}, #state{teleview_id=TeleviewId, renderer_id=RendererId, context=Context}) ->
-    z_mqtt:publish([<<"model">>, <<"teleview">>, <<"event">>, TeleviewId, <<"update">>, RendererId, <<"keyframe">>],
+    z_mqtt:publish([<<"model">>, <<"teleview">>, <<"event">>, TeleviewId, <<"ke">>, RendererId],
                    Msg, #{ qos => 1, retain => true },  z_acl:sudo(Context));
 
 broadcast_patch({incremental, Msg}, #state{teleview_id=TeleviewId, renderer_id=RendererId, context=Context}) ->
-    z_mqtt:publish([<<"model">>, <<"teleview">>, <<"event">>, TeleviewId, <<"update">>, RendererId, <<"incremental">>],
+    z_mqtt:publish([<<"model">>, <<"teleview">>, <<"event">>, TeleviewId, <<"in">>, RendererId],
                    Msg, #{ qos => 1 }, z_acl:sudo(Context));
 
 broadcast_patch({cumulative, Msg}, #state{teleview_id=TeleviewId, renderer_id=RendererId, context=Context}) ->
-    z_mqtt:publish([<<"model">>, <<"teleview">>, <<"event">>, TeleviewId, <<"update">>, RendererId, <<"cumulative">>],
+    z_mqtt:publish([<<"model">>, <<"teleview">>, <<"event">>, TeleviewId, <<"cu">>, RendererId],
                    Msg, z_acl:sudo(Context)).
 
 %% When there are more render casts in the mailbox, skip them, and
@@ -230,7 +220,7 @@ last_render_cast_args(Args) ->
 % Render the template with the supplied vars and send the result to the differ.
 render(Args, #state{template=Template, args=RenderArgs, context=Context}) ->
     Args1 = merge_args(RenderArgs, Args),
-    {IOList, _Context} = z_template:render_to_iolist(Template, Args1, Context),
+    {IOList, _RenderContext} = z_template:render_to_iolist(Template, Args1, Context),
     z_convert:to_binary(IOList).
 
 %% Merge arguments used for rendering. 
@@ -388,14 +378,10 @@ current_time() ->
 patch_to_list(Patch) ->
     patch_to_list(Patch, []).
     
-patch_to_list([], Acc) ->
-    lists:reverse(Acc);
-patch_to_list([{copy, N} | Rest], Acc) ->
-    patch_to_list(Rest, [N, c | Acc]);
-patch_to_list([{skip, N} | Rest], Acc) ->
-    patch_to_list(Rest, [N, s | Acc]);
-patch_to_list([{insert, Bin} | Rest], Acc) ->
-    patch_to_list(Rest, [Bin, i | Acc]).
+patch_to_list([], Acc) -> lists:reverse(Acc);
+patch_to_list([{copy, N} | Rest], Acc) -> patch_to_list(Rest, [N, $C | Acc]);
+patch_to_list([{skip, N} | Rest], Acc) -> patch_to_list(Rest, [N, $S | Acc]);
+patch_to_list([{insert, Bin} | Rest], Acc) -> patch_to_list(Rest, [Bin, $I | Acc]).
 
 trigger_check() ->
     erlang:send_after(?INTERVAL_MSEC, self(), check).

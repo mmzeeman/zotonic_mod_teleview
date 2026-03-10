@@ -1,8 +1,20 @@
 /**
+ * Copyright 2019-2026 Maas-Maarten Zeeman <mmzeeman@xs4all.nl>
  *
- * Teleview worker 
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS-IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
+
+"use strict";
 
 const PAGE_VISIBILITY_TIMEOUT = 5000;
 const MAX_ERROR_RETRY_DELAY = 60000;
@@ -26,13 +38,8 @@ const model = {
     incrementalPatchQueue: [],
 
     isCurrentFrameRequested: false,
-
-    max_time: undefined,
-    min_time: undefined,
-
     pickle: undefined,
 
-    stop: false,
     page_state: "active",
 
     hidden_start_time: undefined,
@@ -69,17 +76,16 @@ model.present = (proposal) => {
         model.incrementalPatchQueue = [];
         model.request_error_count = 0;
 
-        model.min_time = (arg.keyframe_min_time === undefined)?0:arg.keyframe_min_time;
-        model.max_time = (arg.keyframe_max_time === undefined)?"infinite":arg.keyframe_max_time;
-
         model.pickle = arg.pickle;
 
         self.publish(cotonic.mqtt.fill("model/ui/insert/+id", model), { inner: true, priority: 10 });
+
         self.subscribe("model/lifecycle/event/state", actions.lifecycleEvent);
         self.publish(cotonic.mqtt.fill("model/televiewClient/+televiewId/event/started", model), true);
     }
 
     if(proposal.is_subscribe) {
+        self.subscribe(televiewEventTopic(model), actions.televiewEvent);
         self.subscribe(rendererEventTopic(model), actions.rendererEvent);
     }
 
@@ -97,8 +103,16 @@ model.present = (proposal) => {
         model.request_error_count = 0;
     }
 
-    if(proposal.is_update) {
-        model.handleUpdate(proposal.type, proposal.update);
+    if(proposal.is_keyframe) {
+        model.handleKeyFrame(proposal.update);
+    }
+
+    if(proposal.is_cumulative) {
+        model.handleCumulative(proposal.update);
+    }
+
+    if(proposal.is_incremental) {
+        model.handleIncremental(proposal.update);
     }
 
     if(proposal.is_current_frame_response) {
@@ -112,14 +126,10 @@ model.present = (proposal) => {
         }
     }
 
-    if(proposal.is_still_watching && model.updateTopic && state.isPageVisible(model)) {
+    if(proposal.is_ping && model.updateTopic && state.isPageVisible(model)) {
         self.publish(
-            cotonic.mqtt.fill("bridge/origin/model/teleview/post/+teleview_id/still_watching/+renderer_id", model),
+            cotonic.mqtt.fill("bridge/origin/model/teleview/post/+teleview_id/ping/+renderer_id", model),
             {});
-    }
-
-    if(proposal.is_stop && model.updateTopic) {
-        self.publish(cotonic.mqtt.fill("model/televiewClient/+televiewId/event/stopped", model), true);
     }
 
     if(proposal.is_lifecycle_event) {
@@ -139,7 +149,7 @@ model.present = (proposal) => {
 
             // Keep the teleview alive, we moved from hidden to passive.
             self.publish(
-                cotonic.mqtt.fill("bridge/origin/model/teleview/post/+teleview_id/still_watching/+renderer_id", model),
+                cotonic.mqtt.fill("bridge/origin/model/teleview/post/+teleview_id/ping/+renderer_id", model),
                 {});
         }
 
@@ -147,14 +157,13 @@ model.present = (proposal) => {
     }
 
     if(proposal.is_current_frame_request_error) {
-        console.log(model.request_error_count);
         setTimeout(actions.requestCurrentFrame, Math.min(model.request_error_count * 1000, MAX_ERROR_RETRY_DELAY));
         model.request_error_count += 1;
     }
 
-    if(proposal.is_renderer_down) {
-        // [TODO]: Needs to be handled.. But not sure how.
-        console.warn("Teleview: Renderer down", {id: model.id, reason: proposal.reason});
+    if((proposal.is_renderer_down || proposal.is_teleview_down) && ((model.page_state === "passive") || (model.page_state === "active"))) {
+        // The view is visible, try to restart the it by requesting the current frame
+        setTimeout(actions.requestCurrentFrame, 0);
     }
 
     state.render(model);
@@ -192,22 +201,13 @@ model.handleCurrentFrameUpdate = (update) => {
 
             // Just in case... resubscribe to the topic. The server could have forgotton
             // the subscription because the session expired, or the server restarted.
-            self.unsubscribe(rendererEventTopic(model), actions.renderEvent, actions.subscribe);
+            self.unsubscribe([ televiewEventTopic(model), rendererEventTopic(model) ], undefined, actions.subscribe);
         }
 
         model.current_frame = toUTF8(update.current_frame);
         model.current_frame_sn = update.current_frame_sn;
 
         model.handleQueuedIncremental();
-    } else {
-        console.info("Teleview: Ignore current_frame, already up-to-date",
-            {id: model.id,
-                stn: model.sts,
-                has_current_frame: !!model.current_frame,
-                update_stn: update.sts,
-                keyframe_sn: model.keyframe_sn,
-                current_frame_sn: model.current_frame_sn,
-                update_current_frame_sn: update.current_frame_sn});
     }
 }
 
@@ -215,7 +215,7 @@ model.handleQueuedIncremental = () => {
     while(model.incrementalPatchQueue.length) {
         const p = model.incrementalPatchQueue.shift();
 
-        if(model.stn !== p.stn) {
+        if(model.sts !== p.sts) {
             continue; // skip
         }
 
@@ -226,72 +226,61 @@ model.handleQueuedIncremental = () => {
     }
 }
 
-model.handleUpdate = (type, update) => {
-    if(type === "cumulative") {
-        if(model.sts === update.sts ) {
-            if(model.keyframe && model.keyframe_sn === update.keyframe_sn) {
-                model.current_frame = applyPatch(model.keyframe, update);
-                model.current_frame_sn = update.current_frame_sn;
-            } else {
-                console.warn("Cumulative patch does not fit... queue it", model.current_frame_sn, update.current_frame_sn);
-                // When a keyframe arrives, it could be that it is possible to use this patch 
-                // The keyframe is sent as retained message, it will arrive almost immediately
-                model.queuedCumulativePatch = update;
-            }
-        } else {
-            console.warn("Teleview: unexpected cumulative patch", {id: model.id});
+model.handleKeyFrame = (update) => {
+    if(model.sts === undefined || model.keyframe_sn === undefined || update.keyframe_sn > model.keyframe_sn) {
+        // Update the sts...
+        if(model.sts === undefined || model.sts < update.sts) {
+            model.sts = update.sts;
         }
-    } else if(type === "incremental") {
-        if(model.sts === update.sts) {
-            if(model.current_frame && (model.current_frame_sn + 1 === update.current_frame_sn)) {
-                model.current_frame = applyPatch(model.current_frame, update);
-                model.current_frame_sn = update.current_frame_sn;
-            } else {
-                console.warn("Patch does not fit", model.current_frame_sn, update.current_frame_sn);
-                model.incrementalPatchQueue.push(update);
-                setTimeout(actions.requestCurrentFrame, 0);
-            }
-        } else {
-            console.warn("Teleview: unexpected incremental patch", {id: model.id});
+
+        // Update keyframe.
+        model.keyframe = toUTF8(update.frame);
+        model.keyframe_sn = update.keyframe_sn;
+
+        // Check if the new keyframe is the new current frame.
+        if(!model.current_frame || (model.current_frame_sn < update.keyframe_sn)) {
+            model.current_frame = model.keyframe;
+            model.current_frame_sn = model.keyframe_sn;
         }
-    } else if(type === "keyframe") {
-        if(model.sts === undefined || model.keyframe_sn === undefined || update.keyframe_sn > model.keyframe_sn) {
-            // Update the sts...
-            if(model.sts === undefined || model.sts < update.sts) {
-                model.sts = update.sts;
-            }
 
-            // Update keyframe.
-            model.keyframe = toUTF8(update.frame);
-            model.keyframe_sn = update.keyframe_sn;
-
-            // Check if the new keyframe is the new current frame.
-            if(model.current_frame || (model.current_frame_sn < update.keyframe_sn)) {
-                model.current_frame = model.keyframe;
-                model.current_frame_sn = model.keyframe_sn;
-            }
-
-            // Apply the last arrived queued cumulative patch.
-            if(model.queuedCumulativePatch) {
-                if(model.current_frame_sn === undefined || (model.current_frame_sn < model.queuedCumulativePatch.current_frame_sn)) {
-                    if(model.queuedCumulativePatch.stn === model.stn) {
-                        model.current_frame = applyPatch(model.current_frame, model.queuedCumulativePatch);
-                        model.current_frame_sn = model.queuedCumulativePatch.current_frame_sn;
-                    } 
+        // Apply the last arrived queued cumulative patch.
+        if(model.queuedCumulativePatch) {
+            if(model.current_frame_sn === undefined || (model.current_frame_sn < model.queuedCumulativePatch.current_frame_sn)) {
+                if(model.queuedCumulativePatch.sts === model.sts) {
+                    model.current_frame = applyPatch(model.current_frame, model.queuedCumulativePatch);
+                    model.current_frame_sn = model.queuedCumulativePatch.current_frame_sn;
                 } 
-                model.queuedCumulativePatch = undefined;
-            }
-        } else {
-            console.info("Teleview: Ignore keyframe, it is older or has same serial number as current keyframe.",
-                {id: model.id,
-                    keyframe_sn: model.keyframe_sn,
-                    update_keyframe_sn: update.keyframe_sn});
+            } 
+            model.queuedCumulativePatch = undefined;
         }
-    } else {
-        console.warn("Teleview: unexpected update type.", {id: model.id, type: type});
-    }
+    } 
 }
 
+model.handleCumulative = (update) => {
+    if(model.sts === update.sts ) {
+        if(model.keyframe && model.keyframe_sn === update.keyframe_sn) {
+            model.current_frame = applyPatch(model.keyframe, update);
+            model.current_frame_sn = update.current_frame_sn;
+        } else {
+            // When a keyframe arrives, it could be that it is possible to use this patch 
+            // The keyframe is sent as retained message, it will arrive almost immediately
+            model.queuedCumulativePatch = update;
+        }
+    } 
+}
+
+model.handleIncremental = (update) => {
+    if(model.sts === update.sts) {
+        if(model.current_frame && (model.current_frame_sn + 1 === update.current_frame_sn)) {
+            model.current_frame = applyPatch(model.current_frame, update);
+            model.current_frame_sn = update.current_frame_sn;
+        } else {
+            // Queue the patch...
+            model.incrementalPatchQueue.push(update);
+            setTimeout(actions.requestCurrentFrame, 0);
+        }
+    }
+}
 
 /**
  * View
@@ -312,7 +301,7 @@ state.view = view;
 
 state.render = (model) => {
     state.view.display(state.representation(model));
-    state.nextAction(model) ;
+    // no next action needed.
 }
 
 state.isStarted = (model) => {
@@ -335,81 +324,54 @@ state.representation = (model) => {
     return fromUTF8(model.current_frame);
 }
 
-state.nextAction = (model) => {
-    if(model.stop && model.updateTopic) {
-        actions.stop();
-    }
-}
-
 /**
  * Actions
  */
-
-actions.rendererEvent = (m, a) => {
-    const t = a.evt_type;
-
-    if(t === "update") {
-        actions.update(a.args[0], m.payload);
-    } else if(t === "reset") {
-        actions.reset();
-    } else if(t === "still_watching") {
-        actions.still_watching();
-    } else if(t === "down") {
-        actions.rendererDown(m.payload.reason);
-    } else if(t === "stopped") {
-        actions.rendererStopped(m.payload.reason);
-    } else {
-        console.warn("Teleview: Unknown renderer event", {id: model.id, event_type: t});
-    }
-}
-
-actions.update = (type, update) => {
-    model.present({
-        is_update: true,
-        type: type,
-        update: update
-    });
-}
-
-actions.reset = () => {
-    model.present({is_reset: true});
-}
-
-actions.requestCurrentFrame = () => {
-    model.present({ is_request_current_frame: true });
-}
-
-actions.stop = (reason) => {
-    model.present({is_stop: true, reason: reason})
-}
-
-actions.still_watching = () => {
-    model.present({is_still_watching: true});
-}
 
 actions.start = (args) => {
     model.present( {is_start: true, arg: args[0], is_subscribe: true } );
 }
 
-actions.handleEnsureStatus = (m, _a) => {
-    if(m.payload && m.payload.status === "ok") {
-        model.present({
-            is_ensure_server_status: true,
-            arg: m.payload.result
-        });
-    } else {
-        model.present({
-            is_ensure_server_status_error: true,
-            arg: m.payload
-        });
+actions.televiewEvent = (m, a) => {
+    switch(a.evt_type) {
+        case "start":
+            console.info("Teleview: start", m, model);
+            break;
+        case "down":
+            model.present({is_teleview_down: true, reason: m.payload.reason});
+            break;
+        default:
+            console.warn("Teleview: Unknown teleview event", {id: model.id, event_type: a.evt_type});
     }
-   }
+}
 
-actions.errorEnsureStatus = (m, _a) => {
-    model.present({
-        is_ensure_server_status_error: true,
-        arg: m.payload
-    });
+actions.rendererEvent = (m, a) => {
+    switch(a.evt_type) {
+        case "start":
+            model.present({ is_reset: true });
+            break;
+        case "ke":
+            model.present({ is_keyframe: true, update: m.payload });
+            break;
+        case "cu":
+            model.present({ is_cumulative: true, update: m.payload });
+            break;
+        case "in":
+            model.present({ is_incremental: true, update: m.payload });
+            break;
+        case "ping":
+            model.present({ is_ping: true });
+            break;
+        case "down":
+            model.present({ is_renderer_down: true, reason: m.payload.reason });
+            break;
+        default:
+            console.warn("Teleview: Unknown renderer event", {id: model.id, event_type: a.evt_type});
+    }
+}
+
+actions.requestCurrentFrame = () => {
+    model.present({ is_request_current_frame: true });
 }
 
 actions.lifecycleEvent = (m, _a) => {
@@ -442,16 +404,6 @@ actions.currentFrameRequestError = (_m) => {
     model.present({is_current_frame_request_error: true});
 }
 
-actions.rendererDown = (reason) => {
-    // The renderer is down, due to an error, or shutdown. It will be restarted
-    // in case of an error.
-    model.present({is_renderer_down: true, reason: reason});
-}
-
-actions.rendererStopped = function() {
-    // [TODO] The renderer is permanently stopped.
-}
-
 /**
  * Helpers
  */
@@ -459,8 +411,12 @@ actions.rendererStopped = function() {
 const toUTF8 = (() => { const e = new TextEncoder(); return e.encode.bind(e); })();
 const fromUTF8 = (() => { const d = new TextDecoder(); return d.decode.bind(d); })();
 
+function televiewEventTopic(model) {
+    return `bridge/origin/model/teleview/event/${ model.teleview_id }/+evt_type`;
+}
+
 function rendererEventTopic(model) {
-    return `bridge/origin/model/teleview/event/${ model.teleview_id }/+evt_type/${ model.renderer_id }/#args`;
+    return `bridge/origin/model/teleview/event/${ model.teleview_id }/+evt_type/${ model.renderer_id }`;
 }
 
 function applyPatch(source, update) {
@@ -470,6 +426,7 @@ function applyPatch(source, update) {
     const buffer = new ArrayBuffer(update.result_size);
     const array = new Uint8Array(buffer);
     const src = source;
+    const COPY = 67, SKIP = 83, INSERT = 73; 
 
     let src_idx = 0;
     let dst_idx = 0;
@@ -478,24 +435,21 @@ function applyPatch(source, update) {
         const patch = update.patch[i];
         const v = update.patch[i+1];
 
-        if(patch === "c") {
+        if(patch == COPY) {
             array.set(src.subarray(src_idx, src_idx+v), dst_idx);
             src_idx += v;
             dst_idx += v;
-        } else if(patch === "s") {
+        } else if(patch == SKIP) {
             src_idx += v;
-        } else if(patch === "i") {
+        } else if(patch == INSERT) {
             const data = toUTF8(v);
             array.set(data, dst_idx);
             dst_idx += data.length;
-        } else {
-            throw Error("Unexpected patch");
         }
     }
 
     return array;
 }
-
 
 /**
  * Worker startup
