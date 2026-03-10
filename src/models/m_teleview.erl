@@ -39,9 +39,10 @@
 %%
 %% model/teleview/get/<teleview-id>/state/<renderer-id> : Get the state of the renderer, ensures that it is running.
 %%
-%% model/teleview/post/<teleview-id>/ping/<renderer-id> : Indicate that the viewer is still watching.
+%% model/teleview/post/<teleview-id>/ping/<renderer-id> : Indicate that a viewer is still watching.
 %%
-%% model/teleview/event/<teleview-id>/reset/<renderer-id> : The viewer must be reset. Wait for new keyframe.
+%% model/teleview/event/<teleview-id>/start/<renderer-id> : The viewer must be reset. Wait for new keyframe.
+%% model/teleview/event/<teleview-id>/down/<renderer-id>  : The server side renderer is down, the view may restart it. 
 %% model/teleview/event/<teleview-id>/ping/<renderer-id>  : Reply to keep renderer alive
 %% model/teleview/event/<teleview-id>/ke/<renderer-id>    : A keyframe update, update the entire view.
 %% model/teleview/event/<teleview-id>/cu/<renderer-id>    : Cumulative patch against the last keyframe and update view.
