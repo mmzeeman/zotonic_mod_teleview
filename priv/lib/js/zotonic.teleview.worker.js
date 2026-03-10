@@ -429,7 +429,7 @@ function applyPatch(source, update) {
     const buffer = new ArrayBuffer(update.result_size);
     const array = new Uint8Array(buffer);
     const src = source;
-    const COPY = 67, SKIP = 83, INSERT = 73; 
+    const COPY = 0, SKIP = 1, INSERT = 2; 
 
     let src_idx = 0;
     let dst_idx = 0;

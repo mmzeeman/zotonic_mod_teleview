@@ -31,7 +31,9 @@
 -define(RENDERER_WARN_TIME, 60). % 5 min
 -define(RENDERER_EXPIRE_TIME, 420). % 7 min
 
--define(PATCH_OVERHEAD, 15).
+-define(OP_COPY,   0).
+-define(OP_SKIP,   1).
+-define(OP_INSERT, 2).
 
 -include_lib("zotonic_core/include/zotonic.hrl").
 -include_lib("include/teleview.hrl").
@@ -358,9 +360,7 @@ make_patch(SourceText, DestinationText) ->
     diffy_simple_patch:make_patch(CleanedDiffs).
 
 is_complexity_too_high(Diffs, Doc) ->
-    Size = size(Doc),
-    EstimatedSize = estimate_size(Diffs),
-    ?PATCH_OVERHEAD + (EstimatedSize * 1.5)  > Size.
+    byte_size(Doc) * 2 < estimate_size(Diffs) * 3.
 
 estimate_size(Diffs) ->
     estimate_size(Diffs, 0).
@@ -369,16 +369,18 @@ estimate_size([], Acc) -> Acc;
 estimate_size([{insert, Data}|Rest], Acc) ->
     estimate_size(Rest, Acc + 4 + estimate_size_element(Data));
 estimate_size([{copy, N}|Rest], Acc) ->
-    estimate_size(Rest, Acc + 4 + estimate_size_element(N));
+    estimate_size(Rest, Acc + 2 + estimate_size_element(N));
 estimate_size([{skip, N}|Rest], Acc) ->
-    estimate_size(Rest, Acc + 4 + estimate_size_element(N)).
+    estimate_size(Rest, Acc + 2 + estimate_size_element(N)).
 
 estimate_size_element(I) when is_integer(I) andalso I < 10 -> 1;
 estimate_size_element(I) when is_integer(I) andalso I < 100 -> 2;
 estimate_size_element(I) when is_integer(I) andalso I < 1000 -> 3;
 estimate_size_element(I) when is_integer(I) andalso I < 10000 -> 4;
 estimate_size_element(I) when is_integer(I) andalso I < 100000 -> 5;
-estimate_size_element(I) when is_integer(I) -> z_convert:to_integer(math:log10(I));
+estimate_size_element(I) when is_integer(I) andalso I < 1000000 -> 6;
+estimate_size_element(I) when is_integer(I) andalso I < 10000000 -> 7;
+estimate_size_element(I) when is_integer(I) -> 8;
 estimate_size_element(B) when is_binary(B) -> size(B).
 
 current_time() ->
@@ -388,9 +390,9 @@ patch_to_list(Patch) ->
     patch_to_list(Patch, []).
     
 patch_to_list([], Acc) -> lists:reverse(Acc);
-patch_to_list([{copy, N} | Rest], Acc) -> patch_to_list(Rest, [N, $C | Acc]);
-patch_to_list([{skip, N} | Rest], Acc) -> patch_to_list(Rest, [N, $S | Acc]);
-patch_to_list([{insert, Bin} | Rest], Acc) -> patch_to_list(Rest, [Bin, $I | Acc]).
+patch_to_list([{copy, N} | Rest], Acc) -> patch_to_list(Rest, [N, ?OP_COPY | Acc]);
+patch_to_list([{skip, N} | Rest], Acc) -> patch_to_list(Rest, [N, ?OP_SKIP | Acc]);
+patch_to_list([{insert, Bin} | Rest], Acc) -> patch_to_list(Rest, [Bin, ?OP_INSERT | Acc]).
 
 trigger_check() ->
     erlang:send_after(?INTERVAL_MSEC, self(), check).
