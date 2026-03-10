@@ -157,7 +157,6 @@ model.present = (proposal) => {
     }
 
     if(proposal.is_current_frame_request_error) {
-        console.log(model.request_error_count);
         setTimeout(actions.requestCurrentFrame, Math.min(model.request_error_count * 1000, MAX_ERROR_RETRY_DELAY));
         model.request_error_count += 1;
     }
@@ -209,15 +208,6 @@ model.handleCurrentFrameUpdate = (update) => {
         model.current_frame_sn = update.current_frame_sn;
 
         model.handleQueuedIncremental();
-    } else {
-        console.info("Teleview: Ignore current_frame, already up-to-date",
-            {id: model.id,
-                stn: model.sts,
-                has_current_frame: !!model.current_frame,
-                update_stn: update.sts,
-                keyframe_sn: model.keyframe_sn,
-                current_frame_sn: model.current_frame_sn,
-                update_current_frame_sn: update.current_frame_sn});
     }
 }
 
@@ -225,7 +215,7 @@ model.handleQueuedIncremental = () => {
     while(model.incrementalPatchQueue.length) {
         const p = model.incrementalPatchQueue.shift();
 
-        if(model.stn !== p.stn) {
+        if(model.sts !== p.sts) {
             continue; // skip
         }
 
@@ -248,7 +238,7 @@ model.handleKeyFrame = (update) => {
         model.keyframe_sn = update.keyframe_sn;
 
         // Check if the new keyframe is the new current frame.
-        if(model.current_frame || (model.current_frame_sn < update.keyframe_sn)) {
+        if(!model.current_frame || (model.current_frame_sn < update.keyframe_sn)) {
             model.current_frame = model.keyframe;
             model.current_frame_sn = model.keyframe_sn;
         }
@@ -256,19 +246,14 @@ model.handleKeyFrame = (update) => {
         // Apply the last arrived queued cumulative patch.
         if(model.queuedCumulativePatch) {
             if(model.current_frame_sn === undefined || (model.current_frame_sn < model.queuedCumulativePatch.current_frame_sn)) {
-                if(model.queuedCumulativePatch.stn === model.stn) {
+                if(model.queuedCumulativePatch.sts === model.sts) {
                     model.current_frame = applyPatch(model.current_frame, model.queuedCumulativePatch);
                     model.current_frame_sn = model.queuedCumulativePatch.current_frame_sn;
                 } 
             } 
             model.queuedCumulativePatch = undefined;
         }
-    } else {
-        console.info("Teleview: Ignore keyframe, it is older or has same serial number as current keyframe.",
-            {id: model.id,
-                keyframe_sn: model.keyframe_sn,
-                update_keyframe_sn: update.keyframe_sn});
-    }
+    } 
 }
 
 model.handleCumulative = (update) => {
@@ -277,14 +262,11 @@ model.handleCumulative = (update) => {
             model.current_frame = applyPatch(model.keyframe, update);
             model.current_frame_sn = update.current_frame_sn;
         } else {
-            console.warn("Cumulative patch does not fit... queue it", model.current_frame_sn, update.current_frame_sn);
             // When a keyframe arrives, it could be that it is possible to use this patch 
             // The keyframe is sent as retained message, it will arrive almost immediately
             model.queuedCumulativePatch = update;
         }
-    } else {
-        console.warn("Teleview: unexpected cumulative patch", {id: model.id});
-    }
+    } 
 }
 
 model.handleIncremental = (update) => {
@@ -293,12 +275,10 @@ model.handleIncremental = (update) => {
             model.current_frame = applyPatch(model.current_frame, update);
             model.current_frame_sn = update.current_frame_sn;
         } else {
-            console.warn("Patch does not fit", model.current_frame_sn, update.current_frame_sn);
+            // Queue the patch...
             model.incrementalPatchQueue.push(update);
             setTimeout(actions.requestCurrentFrame, 0);
         }
-    } else {
-        console.warn("Teleview: unexpected incremental patch", {id: model.id});
     }
 }
 
@@ -465,8 +445,6 @@ function applyPatch(source, update) {
             const data = toUTF8(v);
             array.set(data, dst_idx);
             dst_idx += data.length;
-        } else {
-            throw Error("Unexpected patch");
         }
     }
 
