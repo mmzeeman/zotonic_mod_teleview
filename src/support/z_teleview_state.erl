@@ -94,12 +94,12 @@ post(TeleviewId, Path, Msg, Context) ->
     gen_server:call({via, z_proc, {{?MODULE, TeleviewId}, Context}},
                     {post, Path, Msg, z_context:prune_for_scomp(Context)}).
 
-% @doc Send model post to the teleview state process.
+% @doc Get the current tick interval of the teleview.
 -spec get_tick(mod_teleview:id(), z:context()) -> {ok, undefined | pos_integer()} | {error, term()}.
 get_tick(TeleviewId, Context) ->
     gen_server:call({via, z_proc, {{?MODULE, TeleviewId}, Context}}, get_tick).
 
-% @doc Send model post to the teleview state process.
+% @doc Update or stop tick interval.
 -spec update_tick(mod_teleview:id(), undefined | pos_integer(), z:context()) -> {ok, term()} | ok | {error, term()}.
 update_tick(TeleviewId, Tick, Context) ->
     gen_server:call({via, z_proc, {{?MODULE, TeleviewId}, Context}}, {update_tick, Tick}).
