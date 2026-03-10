@@ -335,7 +335,7 @@ actions.start = (args) => {
 actions.televiewEvent = (m, a) => {
     switch(a.evt_type) {
         case "start":
-            console.warn("Teleview: start", m, model);
+            console.info("Teleview: start", m, model);
             break;
         case "down":
             model.present({is_teleview_down: true, reason: m.payload.reason});
