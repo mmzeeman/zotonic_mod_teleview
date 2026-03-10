@@ -96,8 +96,16 @@ model.present = (proposal) => {
         model.request_error_count = 0;
     }
 
-    if(proposal.is_update) {
-        model.handleUpdate(proposal.type, proposal.update);
+    if(proposal.is_keyframe) {
+        model.handleKeyFrame(proposal.update);
+    }
+
+    if(proposal.is_cumulative) {
+        model.handleCumulative(proposal.update);
+    }
+
+    if(proposal.is_incremental) {
+        model.handleIncremental(proposal.update);
     }
 
     if(proposal.is_current_frame_response) {
@@ -221,69 +229,69 @@ model.handleQueuedIncremental = () => {
     }
 }
 
-model.handleUpdate = (type, update) => {
-    if(type === "cumulative") {
-        if(model.sts === update.sts ) {
-            if(model.keyframe && model.keyframe_sn === update.keyframe_sn) {
-                model.current_frame = applyPatch(model.keyframe, update);
-                model.current_frame_sn = update.current_frame_sn;
-            } else {
-                console.warn("Cumulative patch does not fit... queue it", model.current_frame_sn, update.current_frame_sn);
-                // When a keyframe arrives, it could be that it is possible to use this patch 
-                // The keyframe is sent as retained message, it will arrive almost immediately
-                model.queuedCumulativePatch = update;
-            }
-        } else {
-            console.warn("Teleview: unexpected cumulative patch", {id: model.id});
+model.handleKeyFrame = (update) => {
+    if(model.sts === undefined || model.keyframe_sn === undefined || update.keyframe_sn > model.keyframe_sn) {
+        // Update the sts...
+        if(model.sts === undefined || model.sts < update.sts) {
+            model.sts = update.sts;
         }
-    } else if(type === "incremental") {
-        if(model.sts === update.sts) {
-            if(model.current_frame && (model.current_frame_sn + 1 === update.current_frame_sn)) {
-                model.current_frame = applyPatch(model.current_frame, update);
-                model.current_frame_sn = update.current_frame_sn;
-            } else {
-                console.warn("Patch does not fit", model.current_frame_sn, update.current_frame_sn);
-                model.incrementalPatchQueue.push(update);
-                setTimeout(actions.requestCurrentFrame, 0);
-            }
-        } else {
-            console.warn("Teleview: unexpected incremental patch", {id: model.id});
+
+        // Update keyframe.
+        model.keyframe = toUTF8(update.frame);
+        model.keyframe_sn = update.keyframe_sn;
+
+        // Check if the new keyframe is the new current frame.
+        if(model.current_frame || (model.current_frame_sn < update.keyframe_sn)) {
+            model.current_frame = model.keyframe;
+            model.current_frame_sn = model.keyframe_sn;
         }
-    } else if(type === "keyframe") {
-        if(model.sts === undefined || model.keyframe_sn === undefined || update.keyframe_sn > model.keyframe_sn) {
-            // Update the sts...
-            if(model.sts === undefined || model.sts < update.sts) {
-                model.sts = update.sts;
-            }
 
-            // Update keyframe.
-            model.keyframe = toUTF8(update.frame);
-            model.keyframe_sn = update.keyframe_sn;
-
-            // Check if the new keyframe is the new current frame.
-            if(model.current_frame || (model.current_frame_sn < update.keyframe_sn)) {
-                model.current_frame = model.keyframe;
-                model.current_frame_sn = model.keyframe_sn;
-            }
-
-            // Apply the last arrived queued cumulative patch.
-            if(model.queuedCumulativePatch) {
-                if(model.current_frame_sn === undefined || (model.current_frame_sn < model.queuedCumulativePatch.current_frame_sn)) {
-                    if(model.queuedCumulativePatch.stn === model.stn) {
-                        model.current_frame = applyPatch(model.current_frame, model.queuedCumulativePatch);
-                        model.current_frame_sn = model.queuedCumulativePatch.current_frame_sn;
-                    } 
+        // Apply the last arrived queued cumulative patch.
+        if(model.queuedCumulativePatch) {
+            if(model.current_frame_sn === undefined || (model.current_frame_sn < model.queuedCumulativePatch.current_frame_sn)) {
+                if(model.queuedCumulativePatch.stn === model.stn) {
+                    model.current_frame = applyPatch(model.current_frame, model.queuedCumulativePatch);
+                    model.current_frame_sn = model.queuedCumulativePatch.current_frame_sn;
                 } 
-                model.queuedCumulativePatch = undefined;
-            }
-        } else {
-            console.info("Teleview: Ignore keyframe, it is older or has same serial number as current keyframe.",
-                {id: model.id,
-                    keyframe_sn: model.keyframe_sn,
-                    update_keyframe_sn: update.keyframe_sn});
+            } 
+            model.queuedCumulativePatch = undefined;
         }
     } else {
-        console.warn("Teleview: unexpected update type.", {id: model.id, type: type});
+        console.info("Teleview: Ignore keyframe, it is older or has same serial number as current keyframe.",
+            {id: model.id,
+                keyframe_sn: model.keyframe_sn,
+                update_keyframe_sn: update.keyframe_sn});
+    }
+}
+
+model.handleCumulative = (update) => {
+    if(model.sts === update.sts ) {
+        if(model.keyframe && model.keyframe_sn === update.keyframe_sn) {
+            model.current_frame = applyPatch(model.keyframe, update);
+            model.current_frame_sn = update.current_frame_sn;
+        } else {
+            console.warn("Cumulative patch does not fit... queue it", model.current_frame_sn, update.current_frame_sn);
+            // When a keyframe arrives, it could be that it is possible to use this patch 
+            // The keyframe is sent as retained message, it will arrive almost immediately
+            model.queuedCumulativePatch = update;
+        }
+    } else {
+        console.warn("Teleview: unexpected cumulative patch", {id: model.id});
+    }
+}
+
+model.handleIncremental = (update) => {
+    if(model.sts === update.sts) {
+        if(model.current_frame && (model.current_frame_sn + 1 === update.current_frame_sn)) {
+            model.current_frame = applyPatch(model.current_frame, update);
+            model.current_frame_sn = update.current_frame_sn;
+        } else {
+            console.warn("Patch does not fit", model.current_frame_sn, update.current_frame_sn);
+            model.incrementalPatchQueue.push(update);
+            setTimeout(actions.requestCurrentFrame, 0);
+        }
+    } else {
+        console.warn("Teleview: unexpected incremental patch", {id: model.id});
     }
 }
 
@@ -360,13 +368,13 @@ actions.rendererEvent = (m, a) => {
             model.present({ is_reset: true });
             break;
         case "ke":
-            model.present({ is_update: true, type: "keyframe", update: m.payload });
+            model.present({ is_keyframe: true, update: m.payload });
             break;
         case "cu":
-            model.present({ is_update: true, type: "cumulative", update: m.payload });
+            model.present({ is_cumulative: true, update: m.payload });
             break;
         case "in":
-            model.present({ is_update: true, type: "incremental", update: m.payload });
+            model.present({ is_incremental: true, update: m.payload });
             break;
         case "ping":
             model.present({ is_ping: true });
