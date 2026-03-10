@@ -62,7 +62,7 @@ m_get([Teleview, <<"keyframe">>, Renderer | Rest], _Msg, Context) ->
             Frame = z_teleview_state:get_keyframe(TeleviewId, RendererId, Context),
             {ok, {Frame, Rest}};
         false ->
-            {error, eaccess}
+            {error, eacces}
     end;
 
 %% Request for the current frame
@@ -70,12 +70,18 @@ m_get([Teleview, <<"current_frame">>, Renderer | Rest], #{ payload := Payload },
     TeleviewId = z_convert:to_integer(Teleview),
     RendererId = z_convert:to_integer(Renderer),
 
-    case z_teleview_state:get_current_frame(TeleviewId, RendererId, Payload, Context) of
-        #{} = Frame -> 
-            {ok, {Frame, Rest}};
-        {error, _} = Error ->
-            Error
+    case z_teleview_acl:is_view_allowed(TeleviewId, RendererId, Context) of
+        true ->
+            case z_teleview_state:get_current_frame(TeleviewId, RendererId, Payload, Context) of
+                #{} = Frame -> 
+                    {ok, {Frame, Rest}};
+                {error, _} = Error ->
+                    Error
+            end;
+        false ->
+            {error, eacces}
     end;
+
 m_get([Teleview, <<"current_frame">>, Renderer | Rest], #{ }, Context) ->
     TeleviewId = z_convert:to_integer(Teleview),
     RendererId = z_convert:to_integer(Renderer),
@@ -89,7 +95,7 @@ m_get([Teleview, <<"current_frame">>, Renderer | Rest], #{ }, Context) ->
                     Error
             end;
         false ->
-            {error, eaccess}
+            {error, eacces}
     end;
 
 m_get([Teleview, <<"tick">> | Rest], #{ }, Context) ->
@@ -103,7 +109,7 @@ m_get([Teleview, <<"tick">> | Rest], #{ }, Context) ->
                     Error
             end;
         false ->
-            {error, eaccess}
+            {error, eacces}
     end;
 
 m_get(V, _Msg, _Context) ->
@@ -121,7 +127,7 @@ m_post([Teleview, <<"ping">>, Renderer], _Msg, Context) ->
         true ->
             z_teleview_renderer:keep_alive(TeleviewId, RendererId, Context);
         false ->
-            {error, eaccess}
+            {error, eacces}
     end;
 m_post([Teleview, <<"tick">> | Path], #{ payload := Payload }, Context) ->
     TeleviewId = z_convert:to_integer(Teleview),
@@ -130,7 +136,7 @@ m_post([Teleview, <<"tick">> | Path], #{ payload := Payload }, Context) ->
             TickValue = get_tick_value(Path, Payload, Context),
             z_teleview_state:update_tick(TeleviewId, TickValue, Context);
         false ->
-            {error, eaccess}
+            {error, eacces}
     end;
 m_post([Teleview, <<"topics">> | Path], #{ payload := Payload }, Context) ->
     TeleviewId = z_convert:to_integer(Teleview),
@@ -139,7 +145,7 @@ m_post([Teleview, <<"topics">> | Path], #{ payload := Payload }, Context) ->
             Topics = get_topics(Path, Payload, Context),
             z_teleview_state:update_topics(TeleviewId, Topics, Context);
         false ->
-            {error, eaccess}
+            {error, eacces}
     end;
 m_post([Teleview, <<"state">> | Path], Msg, Context) ->
     TeleviewId = z_convert:to_integer(Teleview),
@@ -147,7 +153,7 @@ m_post([Teleview, <<"state">> | Path], Msg, Context) ->
         true ->
             z_teleview_state:post(TeleviewId, Path, Msg, Context);
         false ->
-            {error, eaccess}
+            {error, eacces}
     end;
 m_post(V, _Msg, _Context) ->
     ?LOG_INFO("Unknown ~p post: ~p", [?MODULE, V]),

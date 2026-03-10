@@ -26,13 +26,8 @@ const model = {
     incrementalPatchQueue: [],
 
     isCurrentFrameRequested: false,
-
-    // max_time: undefined,
-    // min_time: undefined,
-
     pickle: undefined,
 
-    // stop: false,
     page_state: "active",
 
     hidden_start_time: undefined,
@@ -315,7 +310,7 @@ state.view = view;
 
 state.render = (model) => {
     state.view.display(state.representation(model));
-    state.nextAction(model) ;
+    // no next action needed.
 }
 
 state.isStarted = (model) => {
@@ -336,9 +331,6 @@ state.representation = (model) => {
     if(!state.isPageVisible(model)) return;
 
     return fromUTF8(model.current_frame);
-}
-
-state.nextAction = (model) => {
 }
 
 /**
