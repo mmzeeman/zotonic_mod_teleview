@@ -148,7 +148,7 @@ teleview_wrapper_element(#{ }) ->
     <<"div">>.
 
 %
-% @doc Get the teleview element wrapper element 
+% @doc Get the current frame of the renderer.
 current_frame(TeleviewId, RendererId, Pickle, Context) ->
     case z_teleview_state:get_current_frame(TeleviewId, RendererId, Pickle, Context) of
         #{ sts := Sts, current_frame := Frame, current_frame_sn := SN } ->

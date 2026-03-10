@@ -144,8 +144,10 @@ get_current_frame(TeleviewId, RendererId, Context) ->
 get_current_frame(TeleviewId, RendererId, #{ <<"pickle">> := Pickle }=R, Context) ->
     case get_current_frame(TeleviewId, RendererId, Context) of
         {error, enoent} ->
-            #{ teleview_id := TeleviewId, renderer_id := RendererId,
-               teleview_args := TeleviewArgs, renderer_args := RendererArgs } = z_utils:depickle(Pickle, Context),
+            #{ teleview_id := TeleviewId,
+               renderer_id := RendererId,
+               teleview_args := TeleviewArgs,
+               renderer_args := RendererArgs } = z_utils:depickle(Pickle, Context),
             get_current_frame(TeleviewId, RendererId, TeleviewArgs, RendererArgs, Context);
         #{ current_frame_sn := SN, sts := STS}=Map ->
             %% Strip the current frame when we have a matching current frame number.

@@ -238,7 +238,10 @@ model.handleKeyFrame = (update) => {
         model.keyframe_sn = update.keyframe_sn;
 
         // Check if the new keyframe is the new current frame.
-        if(!model.current_frame || (model.current_frame_sn < update.keyframe_sn)) {
+        if(model.current_frame && model.current_frame_sn < update.keyframe_sn) {
+            // Only update the current frame if there is one. During rendering
+            // the view already got the most recent version. Updating the current
+            // frame here can actually move the view back in time.
             model.current_frame = model.keyframe;
             model.current_frame_sn = model.keyframe_sn;
         }

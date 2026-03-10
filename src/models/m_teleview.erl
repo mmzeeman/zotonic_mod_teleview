@@ -141,15 +141,6 @@ m_post([Teleview, <<"tick">> | Path], #{ payload := Payload }, Context) ->
         false ->
             {error, eacces}
     end;
-%m_post([Teleview, <<"topics">> | Path], #{ payload := Payload }, Context) ->
-%    TeleviewId = z_convert:to_integer(Teleview),
-%    case z_teleview_acl:is_post_allowed(TeleviewId, Context) of
-%        true ->
-%            Topics = get_topics(Path, Payload, Context),
-%            z_teleview_state:update_topics(TeleviewId, Topics, Context);
-%        false ->
-%            {error, eacces}
-%    end;
 m_post([Teleview, <<"state">> | Path], Msg, Context) ->
     TeleviewId = z_convert:to_integer(Teleview),
     case z_teleview_acl:is_post_allowed(TeleviewId, Context) of
@@ -191,11 +182,6 @@ get_tick_value(Path, Payload, Context) ->
                     Payload
             end,
     to_undefined_or_integer(Value).
-
-%%get_topics(Path, Payload, Context) ->
-%%    ?DEBUG(Path),
-%%    ?DEBUG(Payload),
-%%    [].
 
 get_q(Name, Payload, Context) ->
     case maps:get(Name, Payload, undefined) of
