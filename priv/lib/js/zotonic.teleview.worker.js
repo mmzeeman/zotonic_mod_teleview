@@ -341,7 +341,7 @@ actions.televiewEvent = (m, a) => {
             model.present({is_teleview_down: true, reason: m.payload.reason});
             break;
         default:
-            console.warn("Teleview: Unknown teleview event", {id: model.id, event_type: t});
+            console.warn("Teleview: Unknown teleview event", {id: model.id, event_type: a.evt_type});
     }
 }
 
