@@ -39,6 +39,7 @@
 -export([
     start_link/4,
 
+    ensure_ready/3,
     is_already_started/3,
     keep_alive/3,
 
@@ -99,6 +100,12 @@ render(Pid, Args, _Context) when is_pid(Pid) ->
 render(TeleviewId, RendererId, Args, Context) ->
     gen_server:cast({via, z_proc, {{?MODULE, TeleviewId, RendererId}, Context}}, {render, Args}).
 
+% Check to see if the teleview is ready. This call will return ok when the
+% first render is done.
+ensure_ready(TeleviewId, RendererId, Context) ->
+    gen_server:call({via, z_proc, {{?MODULE, TeleviewId, RendererId}, Context}}, ensure_ready).
+
+
 %%
 %% gen_server callbacks
 %%
@@ -131,6 +138,8 @@ init([TeleviewId, RendererId, #{ template := Template }=Args, Context]) ->
 
     {ok, State}.
 
+handle_call(ensure_ready, _From, State) ->
+    {reply, ok, State};
 handle_call(Msg, _From, State) ->
     {stop, {unknown_call, Msg}, State}.
 

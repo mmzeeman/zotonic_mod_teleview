@@ -148,6 +148,7 @@ get_current_frame(TeleviewId, RendererId, #{ <<"pickle">> := Pickle }=R, Context
                renderer_id := RendererId,
                teleview_args := TeleviewArgs,
                renderer_args := RendererArgs } = z_utils:depickle(Pickle, Context),
+
             get_current_frame(TeleviewId, RendererId, TeleviewArgs, RendererArgs, Context);
         #{ current_frame_sn := SN, sts := STS}=Map ->
             %% Strip the current frame when we have a matching current frame number.
@@ -168,6 +169,8 @@ get_current_frame(TeleviewId, RendererId, TeleviewArgs, RendererArgs, Context) -
         {error, enoent} ->
             case scomp_teleview_teleview:ensure_renderer(TeleviewArgs, RendererArgs, Context) of
                 {ok, TeleviewId, RendererId} ->
+                    %% Wait until the first render is done.
+                    ok = z_teleview_renderer:ensure_ready(TeleviewId, RendererId, Context),
                     get_current_frame(TeleviewId, RendererId, Context);
                 {error, Error} ->
                     ?LOG_WARNING(#{ text => "Could not restart renderer",
