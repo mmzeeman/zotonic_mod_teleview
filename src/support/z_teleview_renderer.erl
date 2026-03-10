@@ -360,28 +360,14 @@ make_patch(SourceText, DestinationText) ->
     diffy_simple_patch:make_patch(CleanedDiffs).
 
 is_complexity_too_high(Diffs, Doc) ->
-    byte_size(Doc) * 2 < estimate_size(Diffs) * 3.
+    byte_size(Doc) * 2 < inserted_size(Diffs) * 3.
 
-estimate_size(Diffs) ->
-    estimate_size(Diffs, 0).
+inserted_size(Diffs) ->
+    inserted_size(Diffs, 0).
 
-estimate_size([], Acc) -> Acc;
-estimate_size([{insert, Data}|Rest], Acc) ->
-    estimate_size(Rest, Acc + 4 + estimate_size_element(Data));
-estimate_size([{copy, N}|Rest], Acc) ->
-    estimate_size(Rest, Acc + 2 + estimate_size_element(N));
-estimate_size([{skip, N}|Rest], Acc) ->
-    estimate_size(Rest, Acc + 2 + estimate_size_element(N)).
-
-estimate_size_element(I) when is_integer(I) andalso I < 10 -> 1;
-estimate_size_element(I) when is_integer(I) andalso I < 100 -> 2;
-estimate_size_element(I) when is_integer(I) andalso I < 1000 -> 3;
-estimate_size_element(I) when is_integer(I) andalso I < 10000 -> 4;
-estimate_size_element(I) when is_integer(I) andalso I < 100000 -> 5;
-estimate_size_element(I) when is_integer(I) andalso I < 1000000 -> 6;
-estimate_size_element(I) when is_integer(I) andalso I < 10000000 -> 7;
-estimate_size_element(I) when is_integer(I) -> 8;
-estimate_size_element(B) when is_binary(B) -> size(B).
+inserted_size([], Acc) -> Acc;
+inserted_size([{insert, Data}|Rest], Acc) -> inserted_size(Rest, Acc + byte_size(Data));
+inserted_size([_|Rest], Acc) -> inserted_size(Rest, Acc).
 
 current_time() ->
     erlang:system_time(millisecond).
