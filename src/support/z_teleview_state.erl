@@ -55,8 +55,8 @@
 
     args :: term(),
 
-    tick :: undefined | pos_integer(), %% tick timer value
-    tick_ref :: term(),                %% tick timer reference 
+    tick :: undefined | pos_integer(),   %% tick timer value
+    tick_ref :: undefined | reference(), %% tick timer reference 
 
     teleview_supervisor = undefined,  %% The supervisor of the teleview
     renderers_supervisor = undefined, %% The supervisor of all renderers
