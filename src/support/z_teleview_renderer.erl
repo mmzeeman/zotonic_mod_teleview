@@ -348,11 +348,11 @@ make_patch(SourceText, DestinationText) ->
     CleanedDiffs = diffy:cleanup_efficiency(Diffs),
     diffy_simple_patch:make_patch(CleanedDiffs).
 
-    %% When diffy is upgraded to the 32 bit utf diff operation, it is 
-    %% possible to optimize the cleanup step. This prevents multiple
-    %% utf8 to utf32 and back conversions.
-    % Diffs = diffy:diff(SourceText, DestinationText, [{efficiency, 4}]),
-    % diffy_simple_patch:make_patch(Diffs).
+%% When diffy is upgraded to the 32 bit utf diff operation, it is
+%% possible to optimize the cleanup step. This prevents multiple
+%% utf8 to utf32 and back conversions.
+%% Diffs = diffy:diff(SourceText, DestinationText, [{efficiency, 4}]),
+%% diffy_simple_patch:make_patch(Diffs).
 
 
 is_complexity_too_high(Diffs, Doc) ->
