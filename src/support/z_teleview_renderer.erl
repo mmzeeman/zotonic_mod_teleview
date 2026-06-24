@@ -271,15 +271,6 @@ do_patch(NewFrame, #state{keyframe=KeyFrame}=State) ->
 
 %% Create a cumulative patch
 %%
-do_cumulative_patch(NewFrame, Patch, #state{sts=Sts, min_time=0}=State) ->
-    %% When min_time == 0 there are no incremental frames, so the current_frame_sn is not added to the patch.
-    State1 = update_state(NewFrame, State),
-    {{cumulative, #{sts => Sts,
-                    patch => patch_to_list(Patch),
-                    keyframe_sn => State#state.keyframe_sn,
-                    result_size => size(NewFrame)
-                   }},
-     State1};
 do_cumulative_patch(NewFrame, Patch, #state{sts=Sts}=State) ->
     %% In this case it is possible that the viewers get incremental updates. The current_frame_sn
     %% must be included too.
@@ -295,10 +286,6 @@ do_cumulative_patch(NewFrame, Patch, #state{sts=Sts}=State) ->
 %% Create either a keyframe, or an incremental patch, depending
 %% on the passed minimum time.
 %%
-do_complex_patch(NewFrame, #state{sts=Sts, min_time=0}=State) ->
-    %% Keep it simple, just make a new keyframe
-    State1 = update_state_keyframe(NewFrame, current_time(), State),
-    {{keyframe, #{sts => Sts, frame => NewFrame, keyframe_sn => State1#state.keyframe_sn}}, State1};
 do_complex_patch(NewFrame, #state{sts=Sts}=State) ->
     CurrentTime = current_time(),
 
@@ -355,9 +342,18 @@ update_state(NewFrame, State) ->
      }.
 
 make_patch(SourceText, DestinationText) ->
+    %% Old diffy, which works directly on utf8, with a lot of fiddling
+    %% to repair matched utf8 prefixes.
     Diffs = diffy:diff(SourceText, DestinationText),
     CleanedDiffs = diffy:cleanup_efficiency(Diffs),
     diffy_simple_patch:make_patch(CleanedDiffs).
+
+    %% When diffy is upgraded to the 32 bit utf diff operation, it is 
+    %% possible to optimize the cleanup step. This prevents multiple
+    %% utf8 to utf32 and back conversions.
+    % Diffs = diffy:diff(SourceText, DestinationText, [{efficiency, 4}]),
+    % diffy_simple_patch:make_patch(Diffs).
+
 
 is_complexity_too_high(Diffs, Doc) ->
     byte_size(Doc) * 2 < inserted_size(Diffs) * 3.
