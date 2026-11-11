@@ -17,6 +17,20 @@
 %% limitations under the License.
 
 -module(scomp_teleview_teleview).
+-moduledoc(#{zotonic_keywords => ["reference", "scomp", "frontend_developer", "template", "render", "mqtt"]}).
+-moduledoc("
+Embed a live server-rendered view in a template:
+
+```
+{% teleview template=\"_live.tpl\" topic=\"model/example/event/#\"
+    vary=%{ user_id: m.acl.user } %}
+```
+
+Repeat `topic` to subscribe to multiple topics. `vary` contains renderer-specific
+arguments; other arguments belong to the shared Teleview state. The component
+starts the state and renderer as needed, grants access for this viewer, and
+starts the browser worker that receives updates. Its output is not cached.
+").
 -behaviour(zotonic_scomp).
 
 -export([vary/2, render/3, ensure_renderer/3]).
