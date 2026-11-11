@@ -17,6 +17,27 @@
 %% limitations under the License.
 
 -module(mod_teleview).
+-moduledoc(#{
+    zotonic_doc_file => "../README.md",
+    zotonic_keywords => [
+        "reference", "module", "frontend_developer", "backend_developer",
+        "template", "render", "mqtt", "publish_and_subscribe", "dom"
+    ]
+}).
+-moduledoc("
+Server-rendered views that update live through MQTT and Cotonic.
+
+Enable `mod_teleview` for your site and embed a `{% teleview %}` component with
+its template, subscribed topics, and optional renderer-specific `vary` values.
+Teleview shares state between viewers and sends keyframes and incremental DOM
+patches. Renderers stop when their viewers no longer respond to keep-alive checks.
+
+State and renderer initialization notifications allow the owning module to
+select the rendering context and permissions. Teleview's model endpoints check
+view or post access before reading frames or changing state.
+
+See the README for setup, examples, and architecture diagrams.
+").
 -author("Maas-Maarten Zeeman <mmzeeman@xs4all.nl>").
 
 -mod_title("TeleView").

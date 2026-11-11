@@ -18,6 +18,19 @@
 
 
 -module(m_teleview).
+-moduledoc(#{zotonic_keywords => ["reference", "model", "backend_developer", "mqtt", "publish_and_subscribe"]}).
+-moduledoc("
+MQTT model interface for Teleview frames, keep-alive messages, and state updates.
+
+Read `model/teleview/get/<id>/keyframe/<renderer>` or
+`model/teleview/get/<id>/current_frame/<renderer>` to obtain a frame. Post to
+`model/teleview/post/<id>/ping/<renderer>` to keep a renderer alive. These paths
+check view access. Reading or posting `tick` and posting `state` require post
+access; denied requests return `{error, eacces}`.
+
+`publish_event/4,5` are server-side helpers that publish with a sudo context;
+callers are responsible for authorization before using them.
+").
 -author("Maas-Maarten Zeeman <mmzeeman@xs4all.nl>").
 
 -behaviour(zotonic_model).
